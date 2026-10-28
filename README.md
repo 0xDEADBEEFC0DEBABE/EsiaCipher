@@ -69,8 +69,9 @@ build\bin\cipher.exe
 ```
 
 Cipher uses Esia's source tree from `../Esia` when it is there. If it is not, CMake downloads Esia at the commit
-Cipher was tested with (`CIPHER_ESIA_TAG`). To use another tree, pass `-DCIPHER_ESIA_DIR=<path>`. With plain CMake, run
-this from a Visual Studio x64 developer prompt:
+Cipher was tested with (`CIPHER_ESIA_TAG`). To use another tree, pass `-DCIPHER_ESIA_DIR=<path>`. The first configure
+also downloads FreeType and HarfBuzz for Esia's text system. With plain CMake, run this from a Visual Studio x64
+developer prompt:
 
 ```bat
 cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
