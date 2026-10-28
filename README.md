@@ -6,6 +6,10 @@ and every change on screen moves on a spring, so any frame can interrupt, revers
 
 ![The hub, the Inspector window, a notification, the watermark and the pet](docs/hero.jpg)
 
+[![The showcase video](docs/showcase.jpg)](docs/showcase.mp4)
+
+[The showcase video](docs/showcase.mp4) (4 minutes, 1080p60) shows the intro, every tab, the themes and the pet.
+
 ## What is in it
 
 - **Every Dear ImGui widget**: buttons, switches, check boxes, radio buttons, selectables, horizontal and vertical
