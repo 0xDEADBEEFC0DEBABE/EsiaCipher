@@ -1,0 +1,9 @@
+# text is LF in the repository; git picks the working tree's line endings
+* text=auto
+# cmd and PowerShell scripts keep CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# binaries
+*.glb binary
+*.jpg binary
+*.png binary

@@ -1,0 +1,10 @@
+# build trees and their logs (build.bat writes build/, build-configure.log, build.log)
+/build*/
+/build*.log
+# captures
+/shots/
+/*.png
+/*.jpg
+# a pet model of your own: the demo loads assets/pet.glb before the bundled robot; it stays out of the repository
+/assets/pet.glb
+*.exe
