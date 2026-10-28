@@ -149,6 +149,7 @@ the API.
 | `cipher/model.*`, `pet.cpp` | the glTF loader, the model viewer and the pet |
 | `demo/main.cpp` | the demo |
 | `assets/RobotExpressive/` | the default pet |
+| `tools/docs_pictures.ps1` | the pictures in `docs/`, captured from the demo |
 
 ## License
 
