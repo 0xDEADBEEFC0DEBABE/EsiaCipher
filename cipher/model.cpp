@@ -1426,8 +1426,6 @@ namespace cipher
         }
         for (std::size_t i = 0; i < drawn; ++i)
             order_[count[keys_[spare_[i]] >> 8]++] = spare_[i];
-        const std::uint32_t nv = (std::uint32_t)tris_.size() * 3 + fringes * 4, n = (std::uint32_t)tris_.size() * 3 + fringes * 6;
-        esia::DrawList::PrimWriter w = dl.PrimReserve(d.atlas, n, nv);
         // each primitive's material color times `color`, channel by channel
         colors_.resize(d.prims.size());
         for (std::size_t pi = 0; pi < d.prims.size(); ++pi)
@@ -1437,8 +1435,6 @@ namespace cipher
                 col |= ((((d.prims[pi].color >> s) & 0xFFu) * ((color >> s) & 0xFFu) + 127u) / 255u) << s;
             colors_[pi] = col;
         }
-        float bx0 = 1e30f, by0 = 1e30f, bx1 = -1e30f, by1 = -1e30f;
-        std::uint32_t k = 0, ki = 0;
         // the mask at a point: bilinear between its cells' centers
         const bool masked = mask && mask->cells && mask->w > 0 && mask->h > 0 && !mask->area.Empty();
         const float mcw = masked ? mask->area.Width() / (float)mask->w : 1.0f, mch = masked ? mask->area.Height() / (float)mask->h : 1.0f;
@@ -1461,42 +1457,104 @@ namespace cipher
             }
             return m;
         };
-        for (const std::uint32_t ti : order_)
+        // Each primitive's vertices go out once - those its triangles use, in their order - and its triangles index
+        // them: the GPU gets a vertex for each vertex, not one for each triangle's corner. The triangles keep their
+        // order and their corners' order. Masked, a triangle whose three corners are at alpha 0 is left out with its
+        // fringes (drawn, it would change no pixel): its room ends as degenerate triangles, as unused room did. The
+        // bounds stay those of every triangle facing the viewer.
+        constexpr std::uint32_t kNone = 0xFFFFFFFFu, kUsed = 0xFFFFFFFEu;
+        if (usedFirst_.size() != d.prims.size() + 1)
         {
-            const Tri& t = tris_[ti];
-            const Data::Prim& p = d.prims[t.uv >> 20];
-            const Data::Verts& v = d.verts[(std::size_t)p.verts];
-            const std::uint32_t col = colors_[t.uv >> 20];
-            const std::uint32_t vi[3] = {t.a, t.b, t.c};
-            const Vec2 at[3] = {screen_[vi[0]], screen_[vi[1]], screen_[vi[2]]};
-            const std::uint32_t first = k;
-            for (int q = 0; q < 3; ++q)
+            usedFirst_.assign(1, 0u);
+            remapFirst_.assign(1, 0u);
+            usedVtx_.clear();
+            remap_.clear();
+            for (const Data::Prim& p : d.prims)
             {
-                const Vec2 pos = at[q];
+                const std::size_t at = remap_.size(), count = d.verts[(std::size_t)p.verts].pos.size() / 3;
+                remap_.resize(at + count, kNone);
+                for (const std::uint32_t i : p.idx)
+                    remap_[at + i] = kUsed;
+                for (std::uint32_t i = 0; i < (std::uint32_t)count; ++i)
+                    if (remap_[at + i] == kUsed)
+                    {
+                        remap_[at + i] = (std::uint32_t)usedVtx_.size() - usedFirst_.back();
+                        usedVtx_.push_back(i);
+                    }
+                usedFirst_.push_back((std::uint32_t)usedVtx_.size());
+                remapFirst_.push_back((std::uint32_t)remap_.size());
+            }
+        }
+        // the primitives with a triangle drawn, where their vertices go
+        primOut_.assign(d.prims.size(), kNone);
+        for (const Tri& t : tris_)
+            primOut_[t.uv >> 20] = 0u;
+        std::uint32_t nv = 0;
+        for (std::size_t pi = 0; pi < d.prims.size(); ++pi)
+            if (primOut_[pi] != kNone)
+            {
+                primOut_[pi] = nv;
+                nv += usedFirst_[pi + 1] - usedFirst_[pi];
+            }
+        const std::uint32_t roomV = nv + fringes * 2, roomI = (std::uint32_t)tris_.size() * 3 + fringes * 6;
+        esia::DrawList::PrimWriter w = dl.PrimReserve(d.atlas, roomI, roomV);
+        // the vertices, primitive by primitive
+        for (std::size_t pi = 0; pi < d.prims.size(); ++pi)
+        {
+            if (primOut_[pi] == kNone)
+                continue;
+            const Data::Prim& p = d.prims[pi];
+            const Data::Verts& v = d.verts[(std::size_t)p.verts];
+            const std::uint32_t col = colors_[pi];
+            const bool lit = !p.unlit && v.lit && !v.nrm.empty() && lightable;
+            esia::Vertex* o = w.vtx + primOut_[pi];
+            for (std::uint32_t j = usedFirst_[pi]; j < usedFirst_[pi + 1]; ++j, ++o)
+            {
+                const std::uint32_t local = usedVtx_[j], vi = v.first + local;
+                const Vec2 pos = screen_[vi];
                 std::uint32_t vc = col;
-                if (!p.unlit && v.lit && !v.nrm.empty() && lightable)
+                if (lit)
                 {
-                    const float sh = shade_[vi[q]];
+                    const float sh = shade_[vi];
                     vc = col & 0xFF000000u;
                     for (int ch = 0; ch < 24; ch += 8)
                         vc |= (std::uint32_t)std::min((int)((float)((col >> ch) & 0xFFu) * sh + 0.5f), 255) << ch;
                 }
                 if (masked)
                     vc = (vc & 0x00FFFFFFu) | ((std::uint32_t)std::lround((float)(col >> 24) * maskAt(pos)) << 24);
-                w.vtx[k] = esia::Vertex{pos, p.uv[vi[q] - v.first], vc};
-                w.idx[ki++] = w.base + k;
+                *o = esia::Vertex{pos, p.uv[local], vc};
+            }
+        }
+        // the triangles, far to near, each with its fringes
+        float bx0 = 1e30f, by0 = 1e30f, bx1 = -1e30f, by1 = -1e30f;
+        std::uint32_t k = nv, ki = 0;
+        for (const std::uint32_t ti : order_)
+        {
+            const Tri& t = tris_[ti];
+            const std::uint32_t pi = t.uv >> 20;
+            const std::uint32_t first = d.verts[(std::size_t)d.prims[pi].verts].first, out = primOut_[pi];
+            const std::uint32_t* const remap = remap_.data() + remapFirst_[pi];
+            const std::uint32_t vi[3] = {t.a, t.b, t.c};
+            std::uint32_t corner[3];
+            for (int q = 0; q < 3; ++q)
+            {
+                const Vec2 pos = screen_[vi[q]];
                 bx0 = std::min(bx0, pos.x);
                 by0 = std::min(by0, pos.y);
                 bx1 = std::max(bx1, pos.x);
                 by1 = std::max(by1, pos.y);
-                ++k;
+                corner[q] = out + remap[vi[q] - first];
             }
+            if (masked && ((w.vtx[corner[0]].color | w.vtx[corner[1]].color | w.vtx[corner[2]].color) >> 24) == 0)
+                continue;
+            for (int q = 0; q < 3; ++q)
+                w.idx[ki++] = w.base + corner[q];
             // a fringe out of each outline edge: its colors at the edge, fading out over a pixel
             for (int e = 0; e < 3; ++e)
             {
                 if (!(t.edges & (1u << e)))
                     continue;
-                const std::uint32_t ia = first + (std::uint32_t)e, ib = first + (std::uint32_t)((e + 1) % 3), ic = first + (std::uint32_t)((e + 2) % 3);
+                const std::uint32_t ia = corner[e], ib = corner[(e + 1) % 3], ic = corner[(e + 2) % 3];
                 const Vec2 pa = w.vtx[ia].pos, pb = w.vtx[ib].pos, pc = w.vtx[ic].pos;
                 Vec2 nrm(pb.y - pa.y, pa.x - pb.x);
                 const float len = std::sqrt(nrm.x * nrm.x + nrm.y * nrm.y);
@@ -1519,12 +1577,12 @@ namespace cipher
             }
         }
         const Rect bounds = Rect(bx0, by0, bx1, by1).Expanded(pixel);   // the fringes: a pixel out
-        // the unused room (fringes of edges too short to have a direction)
-        for (; k < nv; ++k)
+        // the unused room (fringes of edges too short to have a direction, triangles left out)
+        for (; k < roomV; ++k)
             w.vtx[k] = esia::Vertex{w.vtx[0].pos, w.vtx[0].uv, 0u};
-        for (; ki < n; ++ki)
+        for (; ki < roomI; ++ki)
             w.idx[ki] = w.base;
-        dl.PrimCommit(w, n, bounds);
+        dl.PrimCommit(w, roomI, bounds);
         bounds_ = bounds;
     }
 

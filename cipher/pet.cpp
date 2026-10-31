@@ -326,7 +326,8 @@ namespace cipher
         const float shown = Clamp01(Anim(id, 0, ready ? 1.0f : 0.0f, kSmooth));
         // the pool of light it stands in, the accent's
         SoftSpot(dl, Rect::FromCenter(Vec2(cx, floorY), Vec2(360.0f, 90.0f)), shown_.accent.Fade(0.16f * (0.4f + 0.6f * shown) * alpha_.back()));
-        if (ready && shown > 0.004f)
+        // scrolled out of sight (its card clipped away): nothing of it would show, so it is neither posed nor drawn
+        if (ready && shown > 0.004f && !dl.ClipRect().Empty())
         {
             // its shadow, then the model on it (rising in as it appears)
             SoftSpot(dl, Rect::FromCenter(Vec2(cx, floorY + 1.0f), Vec2(132.0f, 24.0f)), Color::Black(0.42f * shown * alpha_.back()));

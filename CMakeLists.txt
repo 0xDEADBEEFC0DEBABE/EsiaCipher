@@ -16,7 +16,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Esia: its libraries, backends and glass_window's frame for the demo
 set(CIPHER_ESIA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Esia" CACHE PATH "Esia's source tree (missing: fetched from GitHub)")
-set(CIPHER_ESIA_TAG 6e5edd387cc1ac428e6e1428a9e7ad73610e7d90 CACHE STRING "The Esia commit fetched when there is no tree")
+set(CIPHER_ESIA_TAG 5961aab2d178e4dcc6287114a5b7bd0237d2c79f CACHE STRING "The Esia commit fetched when there is no tree")
 set(ESIA_BUILD_EXAMPLES ON CACHE BOOL "glass_window's frame (glass_app) for the demo" FORCE)
 set(ESIA_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -39,6 +39,7 @@ add_library(cipher STATIC
     cipher/inputs.cpp
     cipher/sections.cpp
     cipher/data.cpp
+    cipher/cost.cpp
     cipher/model.hpp
     cipher/model.cpp
     cipher/pet.cpp

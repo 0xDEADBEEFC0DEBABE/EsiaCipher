@@ -113,6 +113,9 @@ namespace cipher
         std::vector<std::uint16_t> keys_;   // the triangles' depths, 16 bits over the range there is
         std::vector<std::uint32_t> order_, spare_;   // the triangles far to near (a radix sort's two passes)
         std::vector<std::uint32_t> colors_;          // each primitive's color this frame
+        // Draw's vertices: each primitive's, those its triangles use (usedVtx_ from usedFirst_[i], each vertex's place
+        // among them in remap_ from remapFirst_[i]: found once); where each primitive's go this Draw (primOut_)
+        std::vector<std::uint32_t> usedFirst_, usedVtx_, remapFirst_, remap_, primOut_;
         void Join();
     };
 }

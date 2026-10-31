@@ -153,6 +153,11 @@ namespace
         bool inspector = true;
     } gState;
 
+    // what the UI's own drawing costs, as it would over a game's frame (the inspector's rows), and the frame loop's
+    // vertical sync (glass_app's SceneInfo::vsync; null where the loop cannot switch it)
+    cipher::FrameCost gCost;
+    bool* gVsync = nullptr;
+
     // Paused, the clock stops a moment later - once the switch that paused it has slid all the way - so nothing is
     // caught half-way that the user just asked for; unpaused, it runs again at once.
     // the Data tab's numbers, colors, list, table and plots
@@ -723,7 +728,9 @@ namespace
             if (ui.CollapsingHeader("Display", true))
             {
                 ui.Row("Vertical sync", "Frames wait for the display's refresh.");
-                ui.Switch("##vsync", &gState.vsync);
+                ui.BeginDisabled(!gVsync);
+                ui.Switch("##vsync", gVsync ? gVsync : &gState.vsync);
+                ui.EndDisabled();
                 ui.Row("HDR output", "scRGB on displays that take it.");
                 ui.Switch("##hdr", &gState.hdr);
                 ui.Row("Field of view");
@@ -1067,8 +1074,8 @@ namespace
     struct Held
     {
         double at = -1.0;
-        float fps = 0.0f, cpu = 0.0f, gpu = 0.0f;
-        int draws = 0, shapes = 0, captures = 0;
+        float fps = 0.0f;
+        int shapes = 0, captures = 0;
     } gHeld;
 
     void Frame(esia::Context& ctx, const glass::SceneInfo& info)
@@ -1076,6 +1083,8 @@ namespace
         cipher::Ui& ui = *gUi;
         if (gBench.on)
             BenchFrame(ctx, info);
+        gCost.Add(info.cpuMs, info.renderMs, info.stats);   // the frame before's
+        gVsync = info.vsync;
         RunScript(ctx);
         ui.NewFrame(info.scale);
         if (!gTab.empty())
@@ -1200,8 +1209,8 @@ namespace
 
         cipher::WindowSpec ws;
         ws.icon = Icon::Activity;
-        ws.pos = Vec2(18.0f, ctx.DisplaySize().y - 18.0f - 340.0f);
-        ws.size = Vec2(244.0f, 340.0f);
+        ws.pos = Vec2(18.0f, ctx.DisplaySize().y - 18.0f - 452.0f);
+        ws.size = Vec2(244.0f, 452.0f);
         ws.minSize = Vec2(210.0f, 160.0f);
         ws.open = &gState.inspector;
         if (ui.Begin("Inspector", ws))
@@ -1242,17 +1251,12 @@ namespace
             {
                 gHeld.at = now;
                 gHeld.fps = info.fps;
-                gHeld.cpu = info.cpuMs;
-                gHeld.gpu = rs && rs->gpu.valid ? rs->gpu.totalMs : 0.0f;
-                gHeld.draws = rs ? rs->drawCalls : 0;
                 gHeld.shapes = rs ? rs->fxInstances : 0;
                 gHeld.captures = rs ? rs->backdropCaptures : 0;
             }
             ui.LabelText("API", "%s", info.api);
             ui.LabelText("Frame", "%.0f fps", (double)gHeld.fps);
-            ui.LabelText("CPU", "%.2f ms", (double)gHeld.cpu);
-            ui.LabelText("GPU", "%.2f ms", (double)gHeld.gpu);
-            ui.LabelText("Draws", "%d", gHeld.draws);
+            ui.FrameCostRows(gCost);
             ui.LabelText("Shapes", "%d", gHeld.shapes);
             ui.LabelText("Captures", "%d", gHeld.captures);
             ui.Spacing();

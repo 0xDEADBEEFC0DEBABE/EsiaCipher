@@ -32,11 +32,17 @@
 #include "esia/render/painter.hpp"
 #include "esia/text/text.hpp"
 #include <cfloat>
+#include <chrono>
 #include <cstdarg>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
+
+namespace esia::render
+{
+    struct RenderStats;
+}
 
 namespace cipher
 {
@@ -184,6 +190,45 @@ namespace cipher
         float gpuMs = 0.0f;
     };
 
+    // What an overlay's drawing costs - a UI drawn over another program's frame, a game's - and only that: on the CPU,
+    // its UI and the rest of what it draws through Esia (BeginUi .. EndUi, around Context::NewFrame .. EndFrame) and
+    // Esia's Renderer::Render (BeginRender .. EndRender); on the GPU, Esia's own commands (EndRender's RenderStats: the
+    // times RenderParams::profile asks for, from timestamps around Esia's work - not the game's frame, not its
+    // present). A frame loop that times these itself (glass_app's SceneInfo) gives them to Add instead. Held(): the
+    // averages over half a second and its slowest frame, kept for the next half second (a number that changes every
+    // frame cannot be read).
+    class FrameCost
+    {
+    public:
+        void BeginUi();
+        void EndUi();
+        void BeginRender();
+        void EndRender(const esia::render::RenderStats& stats);
+        void Add(float uiMs, float renderMs, const esia::render::RenderStats* stats);
+
+        struct Numbers
+        {
+            float uiMs = 0.0f;       // its UI and the rest of its drawing, CPU
+            float renderMs = 0.0f;   // Renderer::Render, CPU
+            float cpuMs = 0.0f;      // both
+            float gpuMs = 0.0f;      // Esia's commands, GPU
+            float worstCpuMs = 0.0f, worstGpuMs = 0.0f;   // the slowest frame's
+            int draws = 0;           // the last frame's draw calls
+            int frames = 0;          // the frames measured (0: none yet)
+            bool gpu = false;        // the device gave GPU times
+        };
+        const Numbers& Held() const { return held_; }
+
+    private:
+        using Clock = std::chrono::steady_clock;
+        Clock::time_point uiStart_, renderStart_, since_;
+        float uiMs_ = 0.0f;
+        double ui_ = 0.0, render_ = 0.0, gpu_ = 0.0;
+        float worstCpu_ = 0.0f, worstGpu_ = 0.0f;
+        int frames_ = 0, gpuFrames_ = 0, draws_ = 0;
+        Numbers held_;
+    };
+
     class Model;   // model.hpp: a glTF model, read on a thread of its own, posed and drawn on the CPU
 
     // The pet: a model at home on the hub. It walks along the tops of the hub and the windows and along the bottom of the
@@ -286,6 +331,10 @@ namespace cipher
         void Caption(const char* fmt, ...);
         void Heading(const char* text);
         void LabelText(const char* label, const char* fmt, ...);
+        // A FrameCost's numbers as rows (LabelText's: they roll to new values twice a second) - Build (its UI and the
+        // rest of its drawing, CPU), Render (Renderer::Render, CPU), GPU (Esia's commands), the slowest frame's CPU and
+        // GPU, draw calls.
+        void FrameCostRows(const FrameCost& cost);
         void BulletText(const char* fmt, ...);
         void Bullet();
         // `s` as it is (no formatting), wrapped at the content width when `wrap`
