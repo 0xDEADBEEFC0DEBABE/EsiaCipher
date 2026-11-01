@@ -321,7 +321,9 @@ namespace cipher
         if (!sel && tf.shown.value <= 0.003f)
             return false;
         const float shown = Clamp01(tf.shown.value);
-        const float offset = (sel ? 1.0f : -1.0f) * tf.dir * 18.0f * (1.0f - shown);
+        // on whole pixels: a fraction moved the content's edge against its cursor (which is on a pixel), and a row's
+        // description on the edge of wrapping wrapped and unwrapped as the content slid in
+        const float offset = std::round((sel ? 1.0f : -1.0f) * tf.dir * 18.0f * (1.0f - shown) * pixelScale_) / pixelScale_;
         ctx_.SetCursorPos(Vec2(tb.start.x + offset, tb.start.y));
         ContainerOptions co;
         co.size = Vec2(tb.width, 0.0f);

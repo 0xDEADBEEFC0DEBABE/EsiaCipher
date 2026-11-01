@@ -123,7 +123,10 @@ namespace cipher
             ps.selY.Step(dt_, kBouncy);
             const float stretch = std::min(std::fabs(ps.selY.velocity) * 0.01f, 8.0f);
             const float y = r.min.y + ps.selY.value;
-            p.Rect(Rect(r.min.x + 6.0f, y - stretch * 0.5f, r.max.x - 6.0f, y + ps.selH + stretch * 0.5f),
+            // its sides on whole pixels, inside the content (whose clip ends on a pixel: a side past it lost its rim)
+            const float s = pixelScale_;
+            const float x0 = std::ceil((r.min.x + 6.0f) * s) / s, x1 = std::floor((r.max.x - 6.0f) * s) / s;
+            p.Rect(Rect(x0, y - stretch * 0.5f, x1, y + ps.selH + stretch * 0.5f),
                    Style().Radius(m::kRadiusControl).Fill(shown_.accent.Fade(0.16f)).Stroke(1.0f / pixelScale_, shown_.accent.Fade(0.35f), 0.0f));
         }
         ps.selTarget = -1.0f;
@@ -218,7 +221,11 @@ namespace cipher
         esia::Painter p = Painter();
         const Color fill = Ink(0.065f * hover + 0.04f * press);
         if (fill.a > 0.002f)
-            p.Rect(r, Style().Radius(m::kRadiusControl).Fill(fill));
+        {
+            // its sides on whole pixels inside the row, as a combo's selection pill has them
+            const float s = pixelScale_;
+            p.Rect(Rect(std::ceil(r.min.x * s) / s, r.min.y, std::floor(r.max.x * s) / s, r.max.y), Style().Radius(m::kRadiusControl).Fill(fill));
+        }
         const float cy = r.Center().y;
         if (icon != Icon::None)
             DrawIcon(p, icon, Vec2(r.min.x + 19.0f, cy), m::kIcon, Ink(enabled ? 0.62f + 0.3f * hover : 0.3f));
@@ -303,12 +310,12 @@ namespace cipher
             lastHovered_ = false;
         const Vec2 d = ctx_.DisplaySize();
         const bool above = field.max.y + 260.0f > d.y && field.min.y > 260.0f;
-        // a pixel wider than the field each side: the fields below it in its column share its edges, and their
+        // on whole pixels, a pixel past the field each side: the fields below it in its column share its edges, and their
         // borders' outer pixel showed along its sides - broken off where the gap between two of them passed
-        const float px = 1.0f / pixelScale_;
-        return BeginPopupEx(pid, above ? Vec2(field.min.x - px, field.min.y - 6.0f) : Vec2(field.min.x - px, field.max.y + 6.0f),
-                            above ? Vec2(0.0f, 1.0f) : Vec2(0.0f, 0.0f), Vec2(field.Width() + 2.0f * px, 0.0f),
-                            Vec2(field.Center().x, above ? field.min.y : field.max.y), true, true);
+        const float s = pixelScale_;
+        const float left = (std::floor(field.min.x * s) - 1.0f) / s, right = (std::ceil(field.max.x * s) + 1.0f) / s;
+        return BeginPopupEx(pid, above ? Vec2(left, field.min.y - 6.0f) : Vec2(left, field.max.y + 6.0f), above ? Vec2(0.0f, 1.0f) : Vec2(0.0f, 0.0f),
+                            Vec2(right - left, 0.0f), Vec2(field.Center().x, above ? field.min.y : field.max.y), true, true);
     }
 
     void Ui::EndCombo() { EndPopupEx(); }
