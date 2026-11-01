@@ -6,7 +6,7 @@ and every change on screen moves on a spring, so any frame can interrupt, revers
 
 ![The hub, the Inspector window, a notification, the watermark and the pet](docs/hero.jpg)
 
-https://github.com/user-attachments/assets/9ea90683-8e81-433a-9102-507526d2c480
+https://github.com/user-attachments/assets/f8571e44-6544-49ce-b810-4522d0305d76
 
 ## What is in it
 
