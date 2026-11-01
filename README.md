@@ -148,6 +148,8 @@ the API.
 down: the dots and crosses come after their word, a glint rides the pen's tip, and `Unwrite` runs the pen back. It
 needs only Esia's `Painter` and a clock, not `Ui`.
 
+![Handwriting: "Hello World" written in liquid glass over the intro's chrome](docs/handwriting.jpg)
+
 ```cpp
 #include "handwriting.hpp"
 
@@ -168,6 +170,8 @@ designed: `preview` draws text, and `table` writes `cipher/handwriting_glyphs.in
 size, tube width, shadow and colors.
 
 It can be drawn three ways (`HandwritingSpec::quality`):
+
+![Each quality writing its own name: Glass, Solid, Lines](docs/handwriting_quality.jpg)
 
 | Quality | How | GPU time on an RTX 4080 SUPER, 1920 x 1080 |
 | --- | --- | --- |

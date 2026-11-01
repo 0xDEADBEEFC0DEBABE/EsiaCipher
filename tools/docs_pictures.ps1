@@ -26,7 +26,7 @@ function Capture([string]$name, [string[]]$extra, [int]$frames, [switch]$WithInt
         $err = & (Join-Path $bin "cipher.exe") --api d3d12 --size 1440x900 --fixed-dt 0.0166667 @introArgs --model $model --frames $frames @extra --screenshot $png 2>&1 | Out-String
         if (-not (Test-Path $png)) { throw "$name failed: $err" }
         if ($err -notmatch "real cursor") { break }
-        "  $name : the real cursor moved the pointer (try $try)"
+        Write-Host "  $name : the real cursor moved the pointer (try $try)"   # not into the function's output: the path
     }
     return $png
 }
@@ -80,4 +80,26 @@ if (-not $Only.Count -or $Only -contains "datamosh")
     $sheet.Save((Join-Path $out "datamosh.jpg"), $jpeg, $quality)
     $g.Dispose(); $sheet.Dispose()
     "datamosh ok"
+}
+
+# handwriting: the intro writing other words (--handwrite) in glass; then each quality writing its name, side by side
+Shot "handwriting" @("--handwrite", "Hello World", "--script", "1:move:1430,890") @(300, 380, 1560, 470) 330 -WithIntro
+if (-not $Only.Count -or $Only -contains "handwriting_quality")
+{
+    $sheet = New-Object System.Drawing.Bitmap 1446, 250
+    $g = [System.Drawing.Graphics]::FromImage($sheet)
+    $g.Clear([System.Drawing.Color]::FromArgb(255, 20, 24, 32))
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $i = 0
+    foreach ($q in "Glass", "Solid", "Lines")
+    {
+        $im = [System.Drawing.Image]::FromFile((Capture "hand$q" @("--handwrite", $q, "--handwrite-quality", $q.ToLower(), "--script", "1:move:1430,890") 330 -WithIntro))
+        $g.DrawImage($im, (New-Object System.Drawing.Rectangle ($i * 485), 0, 476, 250), (New-Object System.Drawing.Rectangle 366, 246, 1428, 750), [System.Drawing.GraphicsUnit]::Pixel)
+        $im.Dispose()
+        $i++
+    }
+    $sheet.Save((Join-Path $out "handwriting_quality.jpg"), $jpeg, $quality)
+    $g.Dispose(); $sheet.Dispose()
+    "handwriting_quality ok"
 }
