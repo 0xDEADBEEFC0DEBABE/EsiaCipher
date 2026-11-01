@@ -100,7 +100,8 @@ namespace cipher
             Surface(p, rolled, std::min(m::kRadiusPanel, h * 0.5f), SurfaceKind::Popup, shown_.raised, 0.8f * a);
             p.SetAlpha(alpha_.back());
             dl.PopClipRect();
-            ctx_.PushClipRect(rolled, true);
+            // what is in it clipped to its surface, not its padding: a knob's rim and shadow, a ring, may reach into it
+            ctx_.PushClipRect(rolled.Intersect(r), false);
             wf.drop = true;
         }
         else

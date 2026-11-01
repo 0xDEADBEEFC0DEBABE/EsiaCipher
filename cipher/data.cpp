@@ -466,17 +466,27 @@ namespace cipher
                 cs.v = v;
             }
         }
-        const float bar = 18.0f, gap = 14.0f, orbD = 84.0f;
-        const float bars = (alpha ? 2.0f : 1.0f) * (bar + gap);
+        // each bar a column: the bar and its knob's overhang at rest on both sides, a step before it - every gap a step,
+        // counted to what shows at rest
+        const float bar = 18.0f, over = 4.0f, step = m::kStep, orbD = 84.0f;
+        const float bars = (alpha ? 2.0f : 1.0f) * (step + over + bar + over);
         const float avail = ContentWidth();
         const float S = std::max(std::min(220.0f, avail - bars), 80.0f);
-        const bool orb = avail >= S + bars + gap + orbD;
-        const Rect area = ItemRect(Vec2(S + bars + (orb ? gap + orbD : 0.0f), S));
+        const bool orb = avail >= S + bars + step + orbD;
+        const Rect area = ItemRect(Vec2(S + bars + (orb ? step + orbD : 0.0f), S));
         ctx_.ItemAdd(0, area);
         const Rect sq(area.min, area.min + Vec2(S, S));
-        const Rect hueR(sq.max.x + gap, sq.min.y, sq.max.x + gap + bar, sq.max.y);
-        const Rect alR(hueR.max.x + gap, sq.min.y, hueR.max.x + gap + bar, sq.max.y);   // with alpha
+        const Rect hueR(sq.max.x + step + over, sq.min.y, sq.max.x + step + over + bar, sq.max.y);
+        const Rect alR(hueR.max.x + over + step + over, sq.min.y, hueR.max.x + over + step + over + bar, sq.max.y);   // with alpha
+        // the square a layer in from what holds it: in a popup (18) one step in, its corners concentric with the popup's
+        const float sqR = m::kRadiusControl;
         const float alphaNow = alpha ? col[3] : 1.0f;
+        // the bars' knobs run between the centers of their rounded ends: at either end a knob is round with the end, all
+        // of the bar's color under it (from the bar's very end it hung half off the bar, a lens on what lay beyond)
+        const float ends = bar * 0.5f, run = S - 2.0f * ends;
+        // and the square's knob as far in from its edges as it is wide swollen: at an edge or a corner it is all over the
+        // square, the colors along its run, beyond it the run's edge colors
+        const float inSV = 18.0f, runSV = S - 2.0f * inSV;
         const InputState& in = ctx_.Input();
         const double now = in.Time();
         bool changed = false;
@@ -494,18 +504,18 @@ namespace cipher
         };
         if (dragArea(1, sq))
         {
-            cs.s = Clamp01((in.MousePos().x - sq.min.x) / S);
-            cs.v = 1.0f - Clamp01((in.MousePos().y - sq.min.y) / S);
+            cs.s = Clamp01((in.MousePos().x - sq.min.x - inSV) / runSV);
+            cs.v = 1.0f - Clamp01((in.MousePos().y - sq.min.y - inSV) / runSV);
             changed = true;
         }
         if (dragArea(2, hueR))
         {
-            cs.h = std::min(Clamp01((in.MousePos().y - hueR.min.y) / S), 0.9999f);
+            cs.h = std::min(Clamp01((in.MousePos().y - hueR.min.y - ends) / run), 0.9999f);
             changed = true;
         }
         if (alpha && dragArea(3, alR))
         {
-            col[3] = 1.0f - Clamp01((in.MousePos().y - alR.min.y) / S);
+            col[3] = 1.0f - Clamp01((in.MousePos().y - alR.min.y - ends) / run);
             changed = true;
         }
         if (changed)
@@ -532,22 +542,39 @@ namespace cipher
         const Color glow = AnimColor(id, 0, picked, kSmooth);
         // the square: its hue the knob's (it glides with it), a glow of the color picked around it
         const Color hue = HueColor(cs.hy.value);
-        Style square = Style().Radius(m::kRadiusInner).Fill(Paint::Linear(Color::White(), hue, 0.0f));
+        Style square = Style().Radius(sqR).Fill(Paint::Linear(Color::White(), hue, 0.0f));
         if (windows_.empty() || !windows_.back().popup)
             square.Glow(glow, 14.0f, 0.3f);
         p.Rect(sq, square);
-        p.Rect(sq, Style().Radius(m::kRadiusInner).Fill(Paint::Linear(Color(0.0f, 0.0f, 0.0f, 0.0f), Color::Black(), 90.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 0.0f));
+        {
+            const float x0 = sq.min.x + inSV, x1 = sq.max.x - inSV, y0 = sq.min.y + inSV, y1 = sq.max.y - inSV;
+            p.PushMask(sq, sqR);
+            p.Rect(Rect(sq.min.x, sq.min.y, x0 + 0.5f, sq.max.y), Style().Fill(Color::White()));
+            p.Rect(Rect(x0, sq.min.y, x1, sq.max.y), Style().Fill(Paint::Linear(Color::White(), hue, 0.0f)));
+            p.Rect(Rect(x1 - 0.5f, sq.min.y, sq.max.x, sq.max.y), Style().Fill(hue));
+            p.Rect(Rect(sq.min.x, y0, sq.max.x, y1), Style().Fill(Paint::Linear(Color(0.0f, 0.0f, 0.0f, 0.0f), Color::Black(), 90.0f)));
+            p.Rect(Rect(sq.min.x, y1 - 0.5f, sq.max.x, sq.max.y), Style().Fill(Color::Black()));
+            p.PopMask();
+        }
+        p.Rect(sq, Style().Radius(sqR).Fill(Color(0.0f, 0.0f, 0.0f, 0.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 0.0f));
+        // the colors along the knobs' run, each end the color of the run's end
         p.PushMask(hueR, bar * 0.5f);
+        p.Rect(Rect(hueR.min.x, hueR.min.y, hueR.max.x, hueR.min.y + ends + 0.5f), Style().Fill(HueColor(0.0f)));
         for (int i = 0; i < 6; ++i)
         {
             const float a = (float)i / 6.0f, z = (float)(i + 1) / 6.0f;
-            p.Rect(Rect(hueR.min.x, hueR.min.y + S * a, hueR.max.x, hueR.min.y + S * z + 0.5f), Style().Fill(Paint::Linear(HueColor(a), HueColor(z), 90.0f)));
+            p.Rect(Rect(hueR.min.x, hueR.min.y + ends + run * a, hueR.max.x, hueR.min.y + ends + run * z + 0.5f), Style().Fill(Paint::Linear(HueColor(a), HueColor(z), 90.0f)));
         }
+        p.Rect(Rect(hueR.min.x, hueR.max.y - ends, hueR.max.x, hueR.max.y), Style().Fill(HueColor(1.0f)));
         p.PopMask();
         if (alpha)
         {
             Checker(p, alR, bar * 0.5f, 5.0f, Color::Hex(0xEDEDED), Color::Hex(0xBDBDBD));
-            p.Rect(alR, Style().Radius(bar * 0.5f).Fill(Paint::Linear(glow, glow.WithAlpha(0.0f), 90.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 0.0f));
+            p.PushMask(alR, bar * 0.5f);
+            p.Rect(Rect(alR.min.x, alR.min.y, alR.max.x, alR.min.y + ends + 0.5f), Style().Fill(glow));
+            p.Rect(Rect(alR.min.x, alR.min.y + ends, alR.max.x, alR.max.y - ends), Style().Fill(Paint::Linear(glow, glow.WithAlpha(0.0f), 90.0f)));
+            p.PopMask();
+            p.Rect(alR, Style().Radius(bar * 0.5f).Fill(Color(0.0f, 0.0f, 0.0f, 0.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 0.0f));
         }
         // ripples where it was clicked: a ring spreading out and fading, inside what was clicked
         cs.rings.erase(std::remove_if(cs.rings.begin(), cs.rings.end(), [&](const ColorState::Ring& r) { return now - r.born >= 0.7; }), cs.rings.end());
@@ -556,7 +583,7 @@ namespace cipher
             const float age = (float)((now - r.born) / 0.7);
             const Vec2 at = area.min + r.at;
             const Rect& clicked = sq.Contains(at) ? sq : (hueR.Contains(at) ? hueR : alR);
-            p.PushMask(clicked, clicked == sq ? m::kRadiusInner : bar * 0.5f);
+            p.PushMask(clicked, clicked == sq ? sqR : bar * 0.5f);
             p.Ring(at, 6.0f + 64.0f * EaseOutCubic(age), 2.0f * (1.0f - age) + 0.5f, Style().Fill(Color::White(0.85f * (1.0f - age) * (1.0f - age))));
             p.PopMask();
         }
@@ -578,12 +605,12 @@ namespace cipher
         };
         const float sw = cs.swellSV.value;
         const float R = 11.0f + 7.0f * sw;
-        const Vec2 k(sq.min.x + S * cs.sx.value, sq.min.y + S * cs.vy.value);
+        const Vec2 k(sq.min.x + inSV + runSV * cs.sx.value, sq.min.y + inSV + runSV * cs.vy.value);
         const auto lift = [](float swell) { return Style().Shadow(Color::Black(0.32f + 0.12f * swell), 8.0f + 10.0f * swell, Vec2(0.0f, 2.0f + 5.0f * swell)); };
         p.Circle(k, R, lift(sw).Glass(lens(R, 0.55f + 0.3f * Clamp01(sw))).Stroke(1.5f, Color::White(0.92f), 1.0f));
         const auto barKnob = [&](const Rect& r, float at, float swell) {
-            const float y = r.min.y + S * at, half = 6.0f + 4.0f * swell;
-            const Rect knob(r.min.x - 4.0f - 2.0f * swell, y - half, r.max.x + 4.0f + 2.0f * swell, y + half);
+            const float y = r.min.y + ends + run * at, half = 6.0f + 4.0f * swell;
+            const Rect knob(r.min.x - over - 2.0f * swell, y - half, r.max.x + over + 2.0f * swell, y + half);
             p.Rect(knob, lift(swell).Radius(half).Glass(lens(half, 0.4f + 0.25f * Clamp01(swell))).Stroke(1.5f, Color::White(0.92f), 1.0f));
         };
         barKnob(hueR, cs.hy.value, cs.swellHue.value);
@@ -594,7 +621,7 @@ namespace cipher
         if (orb)
         {
             const float orr = orbD * 0.5f;
-            const Vec2 oc((alpha ? alR : hueR).max.x + gap + orr, sq.min.y + orr);
+            const Vec2 oc((alpha ? alR : hueR).max.x + over + step + orr, sq.min.y + orr);
             const Rect ob = Rect::FromCenter(oc, Vec2(orbD, orbD));
             const float lean = std::max(cs.swellSV.value, std::max(cs.swellHue.value, alpha ? cs.swellAlpha.value : 0.0f));
             p.PushScale(oc, 1.0f + 0.04f * lean);
@@ -682,19 +709,16 @@ namespace cipher
             changed = true;
         if (entered)
             ctx_.SetKeyboardFocusId(0);
-        // the picker
-        // the picker, 12 in from the popup's edges all round: its padding and as much again (the bars and the gaps
-        // before them as ColorPickerEx lays them out)
+        // the picker, one step in from the popup's edges (its padding): its square rounded concentric with the popup, its
+        // bars' knobs a step from the edge at rest (ColorPickerEx's columns)
         const Vec2 d = ctx_.DisplaySize();
         const bool above = sw.max.y + 260.0f > d.y && sw.min.y > 260.0f;
         const float bars = alpha ? 64.0f : 32.0f;
         if (BeginPopupEx(pid, above ? Vec2(sw.min.x, sw.min.y - 6.0f) : Vec2(sw.min.x, sw.max.y + 6.0f), above ? Vec2(0.0f, 1.0f) : Vec2(0.0f, 0.0f),
-                         Vec2(244.0f + bars, 0.0f), Vec2(sw.Center().x, above ? sw.min.y : sw.max.y), false, true))
+                         Vec2(220.0f + bars + 2.0f * m::kStep, 0.0f), Vec2(sw.Center().x, above ? sw.min.y : sw.max.y), false, true))
         {
-            ctx_.SetCursorPos(ctx_.CursorPos() + Vec2(6.0f, 6.0f));
             if (ColorPickerEx("##picker", c4, alpha))
                 changed = true;
-            ctx_.ItemSize(Vec2(0.0f, 0.0f));
             EndPopupEx();
         }
         if (changed)
