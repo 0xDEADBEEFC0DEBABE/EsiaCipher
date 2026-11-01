@@ -822,10 +822,10 @@ def _B(v, kind):
 
 @cap('C')
 def _C(v, kind):
+    # round the bottom and on up into the exit (its first point where the bowl would pass): no run along the baseline
     v.start((1.06, 1.42))
-    v.add((1.00, 1.60), *ell(0.64, 0.86, 0.52, 0.88, 65, 285)[1:])
-    v.add((0.96, -0.01))
-    v.exit(LOW, 1.47)
+    v.add((1.00, 1.60), *ell(0.64, 0.86, 0.52, 0.88, 65, 270)[1:])
+    v.exit(LOW, 1.13)
 
 
 @cap('D', exit=NONE)
@@ -841,8 +841,8 @@ def _D(v, kind):
 def _E(v, kind):
     v.start((0.96, 1.50))
     v.add((0.86, 1.70), (0.62, 1.78), (0.40, 1.72), (0.28, 1.55), (0.30, 1.33), (0.42, 1.15), (0.60, 1.02)).tip()
-    v.add((0.40, 0.95), (0.22, 0.80), (0.12, 0.55), (0.14, 0.30), (0.27, 0.10), (0.48, 0.0), (0.72, -0.01))
-    v.exit(LOW, 1.25)
+    v.add((0.40, 0.95), (0.22, 0.80), (0.12, 0.55), (0.14, 0.30), (0.25, 0.10), (0.43, 0.005))
+    v.exit(LOW, 0.93)
 
 
 @cap('F')
