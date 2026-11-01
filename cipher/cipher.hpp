@@ -298,6 +298,10 @@ namespace cipher
         // how many times it was patted.
         void HubPet(Model& model, const PetSpec& spec);
         int HubPats() const { return hubPats_; }
+        // The pet plays one of its model's animations (Model::AnimationName's index) once where it stands - a crossfade in
+        // from what it was doing and back out - then goes about its ways. In the air, carried or scattered, it plays it
+        // as soon as it stands again (within three seconds).
+        void PetPlay(int animation);
         // An element row: `title` (and `desc` under it) on the left, the next widget's control on the right - a
         // switch, a slider, a field, a button. Rows of one group share hairlines.
         void Row(const char* title, const char* desc = nullptr);
@@ -718,6 +722,9 @@ namespace cipher
         Rect hubAvatar_;          // the profile's avatar in the title bar: its menu's anchor
         std::string hubCrumb_;    // the selected tab of the hub content's first tab bar (the footer's path)
         int hubPats_ = 0;
+        int petPlay_ = -1;              // PetPlay: the animation asked for, and when
+        unsigned petPlaySerial_ = 0;
+        double petPlayAt_ = 0.0;
         // the floating windows (Begin / End) of this frame and the one before: where the pet can walk
         struct Floating
         {

@@ -1043,6 +1043,12 @@ namespace
         cipher::Model& m = *gPet.model;
         ui.Group("Model");
         ui.ModelView("##pet-view", m, gPet.preview, 320.0f);
+        if (m.GetState() == cipher::Model::State::Ready && !gPet.items.empty())
+        {
+            ui.Row("Animation", "Every animation the file holds: here it loops, and the pet on the hub plays it once.");
+            if (ui.Combo("##pet-anim", &gPet.preview, gPet.items.data(), (int)gPet.items.size()))
+                ui.PetPlay(gPet.preview);
+        }
         ui.Row("File", "A glTF binary (.glb): its meshes, textures, skins and animations.");
         ui.InputText("##pet-path", &gPet.path, cipher::InputTextFlags_None, "C:\\path\\to\\model.glb");
         ui.Row("Read it", "On a thread of its own: the hub keeps moving while it loads.");
@@ -1050,12 +1056,6 @@ namespace
         {
             gPet.loaded = gPet.reported = false;
             m.Load(ui.Ctx().Textures(), gPet.path);
-        }
-        if (m.GetState() == cipher::Model::State::Ready && !gPet.items.empty())
-        {
-            ui.Group("Animation");
-            ui.Row("On the turntable", "Every animation the file holds: they crossfade on the hub, play here as they are.");
-            ui.Combo("##pet-anim", &gPet.preview, gPet.items.data(), (int)gPet.items.size());
         }
         ui.Group("Pet");
         ui.Row("Out and about", "At home on the hub, it walks the windows' tops and the bottom of the display; click it to pat it, drag to throw it.");

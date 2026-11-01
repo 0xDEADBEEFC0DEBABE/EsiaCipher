@@ -32,8 +32,9 @@ https://github.com/user-attachments/assets/9ea90683-8e81-433a-9102-507526d2c480
 - **Handwriting** (`handwriting.hpp`): any text written out in a joined cursive, as a pen lays it down - in liquid
   glass as in the intro, a solid tube, or plain lines for old devices - in a few lines of code.
 - **A 3D pet**: a glTF (`.glb`) loader with meshes, textures, skins and animations, drawn with the UI's own
-  triangles. The pet walks on the tops of windows, and you can pat, carry and throw it. It can also burst into small
-  balls with real physics that the pointer blows around, then rebuild cell by cell.
+  triangles. The pet walks on the tops of windows, and you can pat, carry and throw it, or have it play any animation
+  its model holds. It can also burst into small balls with real physics that the pointer blows around, then rebuild
+  cell by cell.
 
 Every graphics API Esia has: Direct3D 12, 11, 10 and 9, OpenGL and Vulkan.
 

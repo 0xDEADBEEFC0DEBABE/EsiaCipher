@@ -65,7 +65,7 @@ namespace cipher
             Vec2 maskOrigin, maskSize;    // the grid: its top left from the feet, its size
             Vec2 pointer;                 // last frame's: the pointer's motion is the wind
             bool pointerPlaced = false;
-            enum class Mode : std::uint8_t { Idle, Walk, Pat, Cheer, Land, Carried, Fall, Jump } mode = Mode::Idle;
+            enum class Mode : std::uint8_t { Idle, Walk, Pat, Cheer, Land, Carried, Fall, Jump, Act } mode = Mode::Idle;
             float modeTime = 0.0f, modeLength = 4.0f;
             float target = 0.0f;          // walking: where to, on its surface
             int exit = 0;                 // walking: then step off its left end (-1) or right end (1), or jump (2)
@@ -85,6 +85,8 @@ namespace cipher
             };
             std::vector<Heart> hearts;
             double eggSeen = -1.0;
+            unsigned playSeen = 0;        // the last PetPlay it took up
+            int act = -1;                 // acting: the animation it plays (PetPlay)
             float Random()
             {
                 seed ^= seed << 13;
@@ -378,6 +380,13 @@ namespace cipher
     // dangles under the pointer) and lets it fall where it is dropped - thrown, as fast as it was moving. The footer's
     // secret makes it cheer. Every change of animation is a crossfade; it turns on a spring. Its window is above the
     // windows it walks on and under the menus and notifications that come later.
+    void Ui::PetPlay(int animation)
+    {
+        petPlay_ = animation;
+        petPlayAt_ = time_;
+        ++petPlaySerial_;
+    }
+
     void Ui::HubPet(Model& model, const PetSpec& spec)
     {
         const Id pid = HashLabel("##cipher-pet", 0x50455421u);
@@ -485,6 +494,20 @@ namespace cipher
             st.eggSeen = hubEgg_;
             if (spec.cheer >= 0 && st.on)
                 setMode(PetMode::Cheer, lengthOf(spec.cheer, 0.0f) + lengthOf(spec.cheerEnd, 0.0f));
+        }
+        // an animation asked for (PetPlay): once where it stands, its last pose held a moment; in the air, carried or
+        // apart, as soon as it stands again - an ask older than three seconds is let go
+        if (petPlaySerial_ != st.playSeen)
+        {
+            const bool valid = petPlay_ >= 0 && petPlay_ < model.Animations();
+            if (valid && st.on && !st.dragging && !spec.scattered && st.grainMode == PetState::Grains::None)
+            {
+                st.playSeen = petPlaySerial_;
+                st.act = petPlay_;
+                setMode(PetMode::Act, model.AnimationLength(st.act) + 0.6f);
+            }
+            else if (!valid || time_ - petPlayAt_ > 3.0)
+                st.playSeen = petPlaySerial_;
         }
         st.modeTime += dt_;
         // scattered: it crumbles into grains from its head down; asked back, they fly home from its feet up and it shows
@@ -689,6 +712,7 @@ namespace cipher
         case PetMode::Pat:
         case PetMode::Cheer:
         case PetMode::Land:
+        case PetMode::Act:
             yawTarget = st.mode == PetMode::Land ? st.yaw.target * 0.5f : 0.0f;
             if (st.modeTime >= st.modeLength)
                 setMode(PetMode::Idle, 3.0f + 4.0f * st.Random());
@@ -753,6 +777,7 @@ namespace cipher
         case PetMode::Fall: want = spec.fall >= 0 ? spec.fall : spec.carried; break;
         case PetMode::Jump: want = spec.jump >= 0 ? spec.jump : spec.carried; break;
         case PetMode::Cheer: want = st.modeTime < lengthOf(spec.cheer, 0.0f) || spec.cheerEnd < 0 ? spec.cheer : spec.cheerEnd; break;
+        case PetMode::Act: want = st.act; break;
         default: break;
         }
         if (want < 0)
@@ -774,7 +799,7 @@ namespace cipher
         }
         // the one-shot animations hold their last frame instead of starting over
         float t = st.animTime;
-        if (st.mode == PetMode::Pat || st.mode == PetMode::Cheer || st.mode == PetMode::Land)
+        if (st.mode == PetMode::Pat || st.mode == PetMode::Cheer || st.mode == PetMode::Land || st.mode == PetMode::Act)
             t = std::min(t, std::max(model.AnimationLength(st.anim) - 1e-3f, 0.0f));
         model.Pose(st.anim, t, st.from, st.fromTime, Smoothstep(0.0f, 1.0f, st.blend));
 
@@ -973,14 +998,16 @@ namespace cipher
                     Ball(dl, g.p, g.r, (g.color & 0x00FFFFFFu) | (alpha << 24));
             }
         }
-        // the hearts: up from its head, swaying, fading
+        // the hearts: up from its head, swaying, fading - lower where its head is near the display's top, so that all of
+        // their way up is on the display
         Vec2 head(st.feet.x, st.feet.y - H);
         model.Where("Head", head);
+        const float lower = std::max(0.0f, 14.0f - (head.y - 64.0f));
         st.hearts.erase(std::remove_if(st.hearts.begin(), st.hearts.end(), [&](const PetState::Heart& h) { return (float)time_ - h.born > 1.4f; }), st.hearts.end());
         for (const PetState::Heart& h : st.hearts)
         {
             const float age = ((float)time_ - h.born) / 1.4f;
-            const Vec2 at = head + h.at + Vec2(std::sin(age * 9.0f) * 4.0f, -18.0f - 46.0f * EaseOutCubic(age));
+            const Vec2 at = head + h.at + Vec2(std::sin(age * 9.0f) * 4.0f, lower - 18.0f - 46.0f * EaseOutCubic(age));
             const float a = Smoothstep(0.0f, 0.12f, age) * (1.0f - Smoothstep(0.55f, 1.0f, age));
             IconMotion mo;
             mo.scale = 0.7f + 0.3f * EaseOutBack(Clamp01(age * 3.0f));

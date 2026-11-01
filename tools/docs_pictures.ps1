@@ -6,10 +6,11 @@
 param([string[]]$Only = @())
 $root = Split-Path -Parent $PSScriptRoot
 $bin = Join-Path $root "build\bin"
-$model = Join-Path $root "assets\RobotExpressive\RobotExpressive.glb"
+$model = "assets\RobotExpressive\RobotExpressive.glb"   # from the repository: the Pet tab shows the path as given
 $out = Join-Path $root "docs"
 $raw = Join-Path $env:TEMP "cipher-docs"
 Add-Type -AssemblyName System.Drawing
+Set-Location $root   # the demo runs from the repository (the model's path above is relative to it)
 New-Item -ItemType Directory -Force $out, $raw | Out-Null
 $jpeg = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }
 $quality = New-Object System.Drawing.Imaging.EncoderParameters 1
