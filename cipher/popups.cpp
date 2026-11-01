@@ -303,8 +303,12 @@ namespace cipher
             lastHovered_ = false;
         const Vec2 d = ctx_.DisplaySize();
         const bool above = field.max.y + 260.0f > d.y && field.min.y > 260.0f;
-        return BeginPopupEx(pid, above ? Vec2(field.min.x, field.min.y - 6.0f) : Vec2(field.min.x, field.max.y + 6.0f), above ? Vec2(0.0f, 1.0f) : Vec2(0.0f, 0.0f),
-                            Vec2(field.Width(), 0.0f), Vec2(field.Center().x, above ? field.min.y : field.max.y), true, true);
+        // a pixel wider than the field each side: the fields below it in its column share its edges, and their
+        // borders' outer pixel showed along its sides - broken off where the gap between two of them passed
+        const float px = 1.0f / pixelScale_;
+        return BeginPopupEx(pid, above ? Vec2(field.min.x - px, field.min.y - 6.0f) : Vec2(field.min.x - px, field.max.y + 6.0f),
+                            above ? Vec2(0.0f, 1.0f) : Vec2(0.0f, 0.0f), Vec2(field.Width() + 2.0f * px, 0.0f),
+                            Vec2(field.Center().x, above ? field.min.y : field.max.y), true, true);
     }
 
     void Ui::EndCombo() { EndPopupEx(); }
