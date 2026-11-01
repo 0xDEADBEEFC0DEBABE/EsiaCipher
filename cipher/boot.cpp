@@ -31,15 +31,28 @@ float ChromeLamp(float2 p, float2 c, float2 size, float soft)
     const float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
     return 1.0 - smoothstep(-soft, soft, dist);
 }
-float3 ChromeStudio(float3 r, float blur)
+// how much of a lamp a crease keeps (see ChromeCrease): all of it where the reflection's radius lies well inside the
+// lamp's range of radii; none at either end of the range, where the crease's arc of reflections only clips the lamp
+float ChromeHold(float radius, float2 c, float2 size)
+{
+    const float near = length(max(abs(c) - size, 0.0)), far = length(abs(c) + size);
+    return smoothstep(near, near + 0.05, radius) * (1.0 - smoothstep(far - 0.05, far, radius));
+}
+float3 ChromeStudio(float3 r, float blur, float crease)
 {
     const float2 p = r.xy / max(r.z + 1.0, 0.05);
     const float radius = max(length(p), 1e-5);
     const float2 dir = p / radius;
     const float soft = 0.008 + blur;
-    const float key = ChromeLamp(p, float2(-0.25, 0.42), float2(0.30, 0.12), soft);
-    const float side = ChromeLamp(p, float2(0.48, 0.12), float2(0.06, 0.30), soft);
-    const float ground = ChromeLamp(p, float2(-0.10, -0.55), float2(0.45, 0.06), soft);
+    float key = ChromeLamp(p, float2(-0.25, 0.42), float2(0.30, 0.12), soft);
+    float side = ChromeLamp(p, float2(0.48, 0.12), float2(0.06, 0.30), soft);
+    float ground = ChromeLamp(p, float2(-0.10, -0.55), float2(0.45, 0.06), soft);
+    if (crease > 0.0)
+    {
+        key *= 1.0 - crease * (1.0 - ChromeHold(radius, float2(-0.25, 0.42), float2(0.30, 0.12)));
+        side *= 1.0 - crease * (1.0 - ChromeHold(radius, float2(0.48, 0.12), float2(0.06, 0.30)));
+        ground *= 1.0 - crease * (1.0 - ChromeHold(radius, float2(-0.10, -0.55), float2(0.45, 0.06)));
+    }
     const float rise = smoothstep(-1.0, 1.0, dir.y);
     const float w = 0.035 + blur;
     const float rim = exp(-abs(radius - 1.0) / w) * 0.031 / w * (0.55 + 0.9 * rise);
@@ -48,6 +61,16 @@ float3 ChromeStudio(float3 r, float blur)
     const float wall = smoothstep(1.25, 2.4, radius) * (0.25 + 0.75 * rise) * 0.55;
     const float3 base = 0.0045 + 0.0035 * rise;
     return (base + key * 4.0 * float3(1.0, 0.93, 0.84) + side * 3.0 * float3(0.84, 0.92, 1.0) + ground * 1.2 + rim) * band + lerp(0.45, 1.8, streak) * wall;
+}
+// whether a crease could clip a lamp here: one is lit and the radius is near an end of its range
+bool ChromeClipsLamp(float3 r, float blur)
+{
+    const float2 p = r.xy / max(r.z + 1.0, 0.05);
+    const float radius = max(length(p), 1e-5);
+    const float soft = 0.008 + blur;
+    return (ChromeLamp(p, float2(-0.25, 0.42), float2(0.30, 0.12), soft) > 0.0 && ChromeHold(radius, float2(-0.25, 0.42), float2(0.30, 0.12)) < 1.0) ||
+           (ChromeLamp(p, float2(0.48, 0.12), float2(0.06, 0.30), soft) > 0.0 && ChromeHold(radius, float2(0.48, 0.12), float2(0.06, 0.30)) < 1.0) ||
+           (ChromeLamp(p, float2(-0.10, -0.55), float2(0.45, 0.06), soft) > 0.0 && ChromeHold(radius, float2(-0.10, -0.55), float2(0.45, 0.06)) < 1.0);
 }
 float3 ChromeAces(float3 x)
 {
@@ -68,16 +91,11 @@ float2 ChromeWaves(float2 uv, float2 grid)
     const float2 slope = (s * 255.0 - 128.0) / 255.0 * 2.2;
     return float2(slope.x, -slope.y);   // y up, as the stripes' coordinates have it
 }
-// one sample at pixel `frag`: premultiplied by how sloped it is (the ribbons, the waves), clear where it is flat
-float4 ChromeSample(float2 frag, float presence, float t, float2 ripple)
+// the stripes bent by themselves at `uv`: their field (the phase's gradient, from the rows of the bending's Jacobian
+// carried along) and their phase
+float2 ChromeBend(float2 uv, float amp, float t, out float phase)
 {
-    const float2 res = gTarget.xy;
-    const float unit = min(res.x, res.y);
-    float2 uv = (2.0 * frag - res) / unit;
-    uv.y = -uv.y;
-    // the stripes bent by themselves, the rows of the bending's Jacobian carried along
     float2 p = uv, rowX = float2(1.0, 0.0), rowY = float2(0.0, 1.0);
-    const float amp = 0.3 * presence;
     [unroll] for (int k = 1; k <= 4; ++k)
     {
         const float i = (float)k, a = amp / i, soften = exp(0.3 - 0.3 * i);
@@ -88,8 +106,35 @@ float4 ChromeSample(float2 frag, float presence, float t, float2 ripple)
         p.y += a * cos(ay);
         rowY -= a * sin(ay) * i * 3.0 * soften * rowX;
     }
-    const float phase = t - p.x - p.y;
-    const float2 field = -(rowX + rowY);
+    phase = t - p.x - p.y;
+    return -(rowX + rowY);
+}
+float2 ChromeDirection(float2 uv, float amp, float t)
+{
+    float phase;
+    const float2 field = ChromeBend(uv, amp, t, phase);
+    return field / max(length(field), 1e-4);
+}
+// a crease, 0..1: where the stripes' direction turns round within a few pixels (from 8 to 40 radians a unit, measured
+// from the direction either side), their slope sweeps an arc at one radius across the studio - and a lamp the arc
+// only clips is mirrored in a thread a pixel wide, drawn the length of the crease
+float ChromeCrease(float2 uv, float amp, float t)
+{
+    const float h = 0.0065;
+    const float turnX = length(ChromeDirection(uv + float2(h, 0.0), amp, t) - ChromeDirection(uv - float2(h, 0.0), amp, t));
+    const float turnY = length(ChromeDirection(uv + float2(0.0, h), amp, t) - ChromeDirection(uv - float2(0.0, h), amp, t));
+    return smoothstep(8.0, 40.0, max(turnX, turnY) / (2.0 * h));
+}
+// one sample at pixel `frag`: premultiplied by how sloped it is (the ribbons, the waves), clear where it is flat
+float4 ChromeSample(float2 frag, float presence, float t, float2 ripple)
+{
+    const float2 res = gTarget.xy;
+    const float unit = min(res.x, res.y);
+    float2 uv = (2.0 * frag - res) / unit;
+    uv.y = -uv.y;
+    const float amp = 0.3 * presence;
+    float phase;
+    const float2 field = ChromeBend(uv, amp, t, phase);
     const float density = max(length(field), 1e-4);
     // a ridge of a squared sine across the stripes; finer than a few pixels, it lies down flat
     const float sharp = 5.0 / 3.0;
@@ -111,7 +156,11 @@ float4 ChromeSample(float2 frag, float presence, float t, float2 ripple)
     const float3 v = normalize(float3(uv * 0.08, -1.0));
     const float facing = saturate(dot(n, -v));
     const float fresnel = 0.92 + 0.08 * pow(1.0 - facing, 5.0);
-    const float3 col = pow(ChromeAces(ChromeStudio(reflect(v, n), blur) * fresnel), 1.0 / 2.2);
+    const float3 r = reflect(v, n);
+    float crease = 0.0;
+    [branch] if (ChromeClipsLamp(r, blur))
+        crease = ChromeCrease(uv, amp, t);
+    const float3 col = pow(ChromeAces(ChromeStudio(r, blur, crease) * fresnel), 1.0 / 2.2);
     return float4(col * alpha, alpha);
 }
 float4 WgtEffect(WgtFx fx)
@@ -143,13 +192,19 @@ float4 WgtEffect(WgtFx fx)
             return 1.0f - Smooth(-soft, soft, dist);
         }
         float Aces(float x) { return std::clamp((x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f), 0.0f, 1.0f); }
+        // the effect's ChromeHold
+        float Hold(float radius, float cx, float cy, float sx, float sy)
+        {
+            const float nx = std::max(std::fabs(cx) - sx, 0.0f), ny = std::max(std::fabs(cy) - sy, 0.0f);
+            const float fx = std::fabs(cx) + sx, fy = std::fabs(cy) + sy;
+            const float nearR = std::sqrt(nx * nx + ny * ny), farR = std::sqrt(fx * fx + fy * fy);
+            return Smooth(nearR, nearR + 0.05f, radius) * (1.0f - Smooth(farR - 0.05f, farR, radius));
+        }
 
-        // one texel of the chrome (straight alpha): `ux`, `uy` its place as the effect's uv; `unit` its texture's size;
-        // `wx`, `wy` the pointer's waves' slope there (y up)
-        void ChromeTexel(float ux, float uy, float unit, float presence, float t, float wx, float wy, std::uint8_t* out)
+        // the effect's ChromeBend: the stripes' field at (ux, uy) and their phase
+        void ChromeBend(float ux, float uy, float amp, float t, float& phase, float& fx, float& fy)
         {
             float px = ux, py = uy, r0x = 1.0f, r0y = 0.0f, r1x = 0.0f, r1y = 1.0f;
-            const float amp = 0.3f * presence;
             for (int k = 1; k <= 4; ++k)
             {
                 const float i = (float)k, a = amp / i, soften = std::exp(0.3f - 0.3f * i);
@@ -164,8 +219,38 @@ float4 WgtEffect(WgtFx fx)
                 r1x -= sy * r0x;
                 r1y -= sy * r0y;
             }
-            const float phase = t - px - py;
-            const float fx = -(r0x + r1x), fy = -(r0y + r1y);
+            phase = t - px - py;
+            fx = -(r0x + r1x);
+            fy = -(r0y + r1y);
+        }
+
+        // the effect's ChromeCrease
+        float ChromeCrease(float ux, float uy, float amp, float t)
+        {
+            const auto direction = [&](float x, float y, float& dx, float& dy) {
+                float phase, fx, fy;
+                ChromeBend(x, y, amp, t, phase, fx, fy);
+                const float l = std::max(std::sqrt(fx * fx + fy * fy), 1e-4f);
+                dx = fx / l;
+                dy = fy / l;
+            };
+            const float h = 0.0065f;
+            float ax, ay, bx, by, cx, cy, dx, dy;
+            direction(ux + h, uy, ax, ay);
+            direction(ux - h, uy, bx, by);
+            direction(ux, uy + h, cx, cy);
+            direction(ux, uy - h, dx, dy);
+            const float turn = std::max(std::sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by)), std::sqrt((cx - dx) * (cx - dx) + (cy - dy) * (cy - dy)));
+            return Smooth(8.0f, 40.0f, turn / (2.0f * h));
+        }
+
+        // one texel of the chrome (straight alpha): `ux`, `uy` its place as the effect's uv; `unit` its texture's size;
+        // `wx`, `wy` the pointer's waves' slope there (y up)
+        void ChromeTexel(float ux, float uy, float unit, float presence, float t, float wx, float wy, std::uint8_t* out)
+        {
+            const float amp = 0.3f * presence;
+            float phase, fx, fy;
+            ChromeBend(ux, uy, amp, t, phase, fx, fy);
             const float density = std::max(std::sqrt(fx * fx + fy * fy), 1e-4f);
             const float sharp = 5.0f / 3.0f;
             const float th = std::tanh(sharp * std::sin(phase));
@@ -198,9 +283,18 @@ float4 WgtEffect(WgtFx fx)
             const float radius = std::max(std::sqrt(qx * qx + qy * qy), 1e-5f);
             const float dirx = qx / radius, diry = qy / radius;
             const float soft = 0.008f + 0.06f;
-            const float key = Lamp(qx, qy, -0.25f, 0.42f, 0.30f, 0.12f, soft);
-            const float side = Lamp(qx, qy, 0.48f, 0.12f, 0.06f, 0.30f, soft);
-            const float ground = Lamp(qx, qy, -0.10f, -0.55f, 0.45f, 0.06f, soft);
+            float key = Lamp(qx, qy, -0.25f, 0.42f, 0.30f, 0.12f, soft);
+            float side = Lamp(qx, qy, 0.48f, 0.12f, 0.06f, 0.30f, soft);
+            float ground = Lamp(qx, qy, -0.10f, -0.55f, 0.45f, 0.06f, soft);
+            const float keyHold = Hold(radius, -0.25f, 0.42f, 0.30f, 0.12f), sideHold = Hold(radius, 0.48f, 0.12f, 0.06f, 0.30f);
+            const float groundHold = Hold(radius, -0.10f, -0.55f, 0.45f, 0.06f);
+            if ((key > 0.0f && keyHold < 1.0f) || (side > 0.0f && sideHold < 1.0f) || (ground > 0.0f && groundHold < 1.0f))
+            {
+                const float crease = ChromeCrease(ux, uy, amp, t);
+                key *= 1.0f - crease * (1.0f - keyHold);
+                side *= 1.0f - crease * (1.0f - sideHold);
+                ground *= 1.0f - crease * (1.0f - groundHold);
+            }
             const float rise = Smooth(-1.0f, 1.0f, diry);
             const float rim = std::exp(-std::fabs(radius - 1.0f) / 0.095f) * 0.031f / 0.095f * (0.55f + 0.9f * rise);
             const float band = 1.0f - 0.95f * Smooth(1.04f, 1.12f, radius);
