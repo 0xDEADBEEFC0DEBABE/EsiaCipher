@@ -136,18 +136,21 @@ namespace cipher
             }
             return true;
         }
-        // a checkerboard under `r` (corners `radius`): what shows through a transparent color
+        // a checkerboard under `r` (corners `radius`): what shows through a transparent color. The pieces at its edges reach
+        // past it: the mask alone anti-aliases the edge (a piece's own edge on it took from it twice)
         void Checker(esia::Painter& p, const Rect& r, float radius, float cell, Color light, Color dark)
         {
+            const Rect o = r.Expanded(2.0f);
             p.PushMask(r, radius);
-            p.Rect(r, Style().Fill(light));
+            p.Rect(o, Style().Fill(light));
             int iy = 0;
             for (float y = r.min.y; y < r.max.y; y += cell, ++iy)
             {
                 int ix = 0;
                 for (float x = r.min.x; x < r.max.x; x += cell, ++ix)
                     if ((ix + iy) & 1)
-                        p.Rect(Rect(x, y, std::min(x + cell, r.max.x), std::min(y + cell, r.max.y)), Style().Fill(dark));
+                        p.Rect(Rect(ix == 0 ? o.min.x : x, iy == 0 ? o.min.y : y, x + cell >= r.max.x ? o.max.x : x + cell, y + cell >= r.max.y ? o.max.y : y + cell),
+                               Style().Fill(dark));
             }
             p.PopMask();
         }
@@ -475,9 +478,12 @@ namespace cipher
         const bool orb = avail >= S + bars + step + orbD;
         const Rect area = ItemRect(Vec2(S + bars + (orb ? step + orbD : 0.0f), S));
         ctx_.ItemAdd(0, area);
-        const Rect sq(area.min, area.min + Vec2(S, S));
-        const Rect hueR(sq.max.x + step + over, sq.min.y, sq.max.x + step + over + bar, sq.max.y);
-        const Rect alR(hueR.max.x + over + step + over, sq.min.y, hueR.max.x + over + step + over + bar, sq.max.y);   // with alpha
+        // straight edges on whole pixels: crisp, and both sides of a bar alike (a bar 21.6 pixels wide had one side crisp,
+        // the other a pixel half covered)
+        const auto onPixel = [&](float v) { return std::round(v * pixelScale_) / pixelScale_; };
+        const Rect sq(onPixel(area.min.x), onPixel(area.min.y), onPixel(area.min.x + S), onPixel(area.min.y + S));
+        const Rect hueR(onPixel(sq.max.x + step + over), sq.min.y, onPixel(sq.max.x + step + over + bar), sq.max.y);
+        const Rect alR(onPixel(hueR.max.x + over + step + over), sq.min.y, onPixel(hueR.max.x + over + step + over + bar), sq.max.y);   // with alpha
         // the square a layer in from what holds it: in a popup (18) one step in, its corners concentric with the popup's
         const float sqR = m::kRadiusControl;
         const float alphaNow = alpha ? col[3] : 1.0f;
@@ -540,41 +546,56 @@ namespace cipher
         esia::Painter p = Painter();
         const Color picked(col[0], col[1], col[2], 1.0f);
         const Color glow = AnimColor(id, 0, picked, kSmooth);
-        // the square: its hue the knob's (it glides with it), a glow of the color picked around it
+        // The square and the bars have one layer at their edges. Every piece reaches past the shape (the mask alone
+        // anti-aliases the edge: a piece's own edge on it took from it twice, and a layer under another showed through
+        // the edge), and pieces meet on whole pixels (no seam, nothing doubled).
+        // the square: its hue the knob's (it glides with it). A band all round of the run's edge colors, the run's colors
+        // inside. The color picked glows around it: a halo behind it, from a shape inside its edge - never over it
         const Color hue = HueColor(cs.hy.value);
-        Style square = Style().Radius(sqR).Fill(Paint::Linear(Color::White(), hue, 0.0f));
         if (windows_.empty() || !windows_.back().popup)
-            square.Glow(glow, 14.0f, 0.3f);
-        p.Rect(sq, square);
+            p.Rect(sq.Expanded(-2.0f), Style().Radius(sqR - 2.0f).Fill(glow).Shadow(glow.WithAlpha(0.75f), 16.0f, Vec2(0.0f, 0.0f), 2.0f));
         {
-            const float x0 = sq.min.x + inSV, x1 = sq.max.x - inSV, y0 = sq.min.y + inSV, y1 = sq.max.y - inSV;
+            const float x0 = onPixel(sq.min.x + inSV), x1 = onPixel(sq.max.x - inSV), y0 = onPixel(sq.min.y + inSV), y1 = onPixel(sq.max.y - inSV);
+            const Rect o = sq.Expanded(2.0f);
             p.PushMask(sq, sqR);
-            p.Rect(Rect(sq.min.x, sq.min.y, x0 + 0.5f, sq.max.y), Style().Fill(Color::White()));
-            p.Rect(Rect(x0, sq.min.y, x1, sq.max.y), Style().Fill(Paint::Linear(Color::White(), hue, 0.0f)));
-            p.Rect(Rect(x1 - 0.5f, sq.min.y, sq.max.x, sq.max.y), Style().Fill(hue));
-            p.Rect(Rect(sq.min.x, y0, sq.max.x, y1), Style().Fill(Paint::Linear(Color(0.0f, 0.0f, 0.0f, 0.0f), Color::Black(), 90.0f)));
-            p.Rect(Rect(sq.min.x, y1 - 0.5f, sq.max.x, sq.max.y), Style().Fill(Color::Black()));
+            p.Rect(Rect(o.min.x, o.min.y, x0, y0), Style().Fill(Color::White()));
+            p.Rect(Rect(x0, o.min.y, x1, y0), Style().Fill(Paint::Linear(Color::White(), hue, 0.0f)));
+            p.Rect(Rect(x1, o.min.y, o.max.x, y0), Style().Fill(hue));
+            p.Rect(Rect(o.min.x, y0, x0, y1), Style().Fill(Paint::Linear(Color::White(), Color::Black(), 90.0f)));
+            p.Rect(Rect(x0, y0, x1, y1), Style().Fill(Paint::Linear(Color::White(), hue, 0.0f)));
+            p.Rect(Rect(x0, y0, x1, y1), Style().Fill(Paint::Linear(Color(0.0f, 0.0f, 0.0f, 0.0f), Color::Black(), 90.0f)));
+            p.Rect(Rect(x1, y0, o.max.x, y1), Style().Fill(Paint::Linear(hue, Color::Black(), 90.0f)));
+            p.Rect(Rect(o.min.x, y1, o.max.x, o.max.y), Style().Fill(Color::Black()));
             p.PopMask();
         }
-        p.Rect(sq, Style().Radius(sqR).Fill(Color(0.0f, 0.0f, 0.0f, 0.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 0.0f));
-        // the colors along the knobs' run, each end the color of the run's end
-        p.PushMask(hueR, bar * 0.5f);
-        p.Rect(Rect(hueR.min.x, hueR.min.y, hueR.max.x, hueR.min.y + ends + 0.5f), Style().Fill(HueColor(0.0f)));
-        for (int i = 0; i < 6; ++i)
+        p.Rect(sq, Style().Radius(sqR).Fill(Color(0.0f, 0.0f, 0.0f, 0.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 1.0f));
+        // the hue along the knobs' run, each end the color of the run's end
         {
-            const float a = (float)i / 6.0f, z = (float)(i + 1) / 6.0f;
-            p.Rect(Rect(hueR.min.x, hueR.min.y + ends + run * a, hueR.max.x, hueR.min.y + ends + run * z + 0.5f), Style().Fill(Paint::Linear(HueColor(a), HueColor(z), 90.0f)));
+            const Rect o = hueR.Expanded(2.0f);
+            const float a0 = onPixel(hueR.min.y + ends), a1 = onPixel(hueR.max.y - ends);
+            p.PushMask(hueR, hueR.Width() * 0.5f);
+            p.Rect(Rect(o.min.x, o.min.y, o.max.x, a0), Style().Fill(HueColor(0.0f)));
+            float from = a0;
+            for (int i = 0; i < 6; ++i)
+            {
+                const float a = (float)i / 6.0f, z = (float)(i + 1) / 6.0f;
+                const float to = i == 5 ? a1 : onPixel(hueR.min.y + ends + run * z);
+                p.Rect(Rect(o.min.x, from, o.max.x, to), Style().Fill(Paint::Linear(HueColor(a), HueColor(z), 90.0f)));
+                from = to;
+            }
+            p.Rect(Rect(o.min.x, a1, o.max.x, o.max.y), Style().Fill(HueColor(1.0f)));
+            p.PopMask();
         }
-        p.Rect(Rect(hueR.min.x, hueR.max.y - ends, hueR.max.x, hueR.max.y), Style().Fill(HueColor(1.0f)));
-        p.PopMask();
         if (alpha)
         {
-            Checker(p, alR, bar * 0.5f, 5.0f, Color::Hex(0xEDEDED), Color::Hex(0xBDBDBD));
-            p.PushMask(alR, bar * 0.5f);
-            p.Rect(Rect(alR.min.x, alR.min.y, alR.max.x, alR.min.y + ends + 0.5f), Style().Fill(glow));
-            p.Rect(Rect(alR.min.x, alR.min.y + ends, alR.max.x, alR.max.y - ends), Style().Fill(Paint::Linear(glow, glow.WithAlpha(0.0f), 90.0f)));
+            Checker(p, alR, alR.Width() * 0.5f, 5.0f, Color::Hex(0xEDEDED), Color::Hex(0xBDBDBD));
+            const Rect o = alR.Expanded(2.0f);
+            const float a0 = onPixel(alR.min.y + ends), a1 = onPixel(alR.max.y - ends);
+            p.PushMask(alR, alR.Width() * 0.5f);
+            p.Rect(Rect(o.min.x, o.min.y, o.max.x, a0), Style().Fill(glow));
+            p.Rect(Rect(o.min.x, a0, o.max.x, a1), Style().Fill(Paint::Linear(glow, glow.WithAlpha(0.0f), 90.0f)));
             p.PopMask();
-            p.Rect(alR, Style().Radius(bar * 0.5f).Fill(Color(0.0f, 0.0f, 0.0f, 0.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 0.0f));
+            p.Rect(alR, Style().Radius(alR.Width() * 0.5f).Fill(Color(0.0f, 0.0f, 0.0f, 0.0f)).Stroke(1.0f / pixelScale_, Ink(0.12f), 1.0f));
         }
         // ripples where it was clicked: a ring spreading out and fading, inside what was clicked
         cs.rings.erase(std::remove_if(cs.rings.begin(), cs.rings.end(), [&](const ColorState::Ring& r) { return now - r.born >= 0.7; }), cs.rings.end());
@@ -583,7 +604,7 @@ namespace cipher
             const float age = (float)((now - r.born) / 0.7);
             const Vec2 at = area.min + r.at;
             const Rect& clicked = sq.Contains(at) ? sq : (hueR.Contains(at) ? hueR : alR);
-            p.PushMask(clicked, clicked == sq ? sqR : bar * 0.5f);
+            p.PushMask(clicked, clicked == sq ? sqR : clicked.Width() * 0.5f);
             p.Ring(at, 6.0f + 64.0f * EaseOutCubic(age), 2.0f * (1.0f - age) + 0.5f, Style().Fill(Color::White(0.85f * (1.0f - age) * (1.0f - age))));
             p.PopMask();
         }
@@ -621,18 +642,38 @@ namespace cipher
         if (orb)
         {
             const float orr = orbD * 0.5f;
-            const Vec2 oc((alpha ? alR : hueR).max.x + over + step + orr, sq.min.y + orr);
+            const Vec2 oc(onPixel((alpha ? alR : hueR).max.x + over + step + orr), onPixel(sq.min.y + orr));
             const Rect ob = Rect::FromCenter(oc, Vec2(orbD, orbD));
             const float lean = std::max(cs.swellSV.value, std::max(cs.swellHue.value, alpha ? cs.swellAlpha.value : 0.0f));
             p.PushScale(oc, 1.0f + 0.04f * lean);
             const Color shown = AnimColor(id, 1, Color(col[0], col[1], col[2], alphaNow), kSmooth);
-            p.Circle(oc, orr, Style().Fill(shown.WithAlpha(1.0f)).Glow(glow, 12.0f, 0.35f).Shadow(Color::Black(0.3f), 14.0f, Vec2(0.0f, 5.0f)));
-            if (shown.a < 0.999f)
+            // the color picked glows around it, and it casts a soft shadow: both from circles inside its edge, under it -
+            // never over it (a glow drawn with it lit its inside too)
+            p.Circle(oc, orr - 2.0f, Style().Fill(glow).Shadow(glow.WithAlpha(0.7f), 14.0f, Vec2(0.0f, 0.0f), 2.0f));
+            p.Circle(oc, orr - 2.0f, Style().Fill(glow).Shadow(Color::Black(0.3f), 14.0f, Vec2(0.0f, 5.0f), 2.0f));
+            // the color, one layer at its edge: the pieces reach past it (the mask alone anti-aliases it) and the halves
+            // meet on a whole pixel. A clip across its right half had cut its edge flat at the top, right and bottom
             {
-                p.PushClip(Rect(oc.x, ob.min.y, ob.max.x, ob.max.y));
-                Checker(p, ob, orr, 7.0f, Color::Hex(0xEDEDED), Color::Hex(0xBDBDBD));
-                p.Circle(oc, orr, Style().Fill(shown));
-                p.PopClip();
+                const float mid = onPixel(oc.x);
+                const Rect o = ob.Expanded(2.0f);
+                p.PushMask(ob, orr);
+                p.Rect(Rect(o.min.x, o.min.y, mid, o.max.y), Style().Fill(shown.WithAlpha(1.0f)));
+                if (shown.a < 0.999f)
+                {
+                    p.Rect(Rect(mid, o.min.y, o.max.x, o.max.y), Style().Fill(Color::Hex(0xEDEDED)));
+                    const float cell = 7.0f;
+                    int iy = 0;
+                    for (float y = ob.min.y; y < ob.max.y; y += cell, ++iy)
+                    {
+                        int ix = 0;
+                        for (float x = ob.min.x; x < ob.max.x; x += cell, ++ix)
+                            if (((ix + iy) & 1) && x + cell > mid)
+                                p.Rect(Rect(std::max(x, mid), iy == 0 ? o.min.y : y, x + cell >= ob.max.x ? o.max.x : x + cell, y + cell >= ob.max.y ? o.max.y : y + cell),
+                                       Style().Fill(Color::Hex(0xBDBDBD)));
+                    }
+                }
+                p.Rect(Rect(mid, o.min.y, o.max.x, o.max.y), Style().Fill(shown.a < 0.999f ? shown : shown.WithAlpha(1.0f)));
+                p.PopMask();
             }
             GlassMaterial g = lens(orr, 0.15f);
             g.refraction = 16.0f;
