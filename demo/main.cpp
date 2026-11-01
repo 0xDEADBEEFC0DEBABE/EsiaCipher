@@ -1301,6 +1301,20 @@ int main(int argc, char** argv)
             usedValue = true;
             return true;
         }
+        if (option == "--handwrite" && value)
+        {
+            gBoot.SetTitle(value);   // the intro writes these words instead of its name
+            usedValue = true;
+            return true;
+        }
+        if (option == "--handwrite-quality" && value)
+        {
+            const std::string q = value;
+            gBoot.Title().Spec().quality = q == "glass" ? cipher::HandwritingQuality::Glass : q == "solid" ? cipher::HandwritingQuality::Solid
+                                         : q == "lines" ? cipher::HandwritingQuality::Lines : cipher::HandwritingQuality::Auto;
+            usedValue = true;
+            return true;
+        }
         if ((option == "--script" || option == "--tab") && value)
         {
             if (option == "--script")

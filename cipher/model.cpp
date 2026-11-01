@@ -1471,11 +1471,11 @@ namespace cipher
             remap_.clear();
             for (const Data::Prim& p : d.prims)
             {
-                const std::size_t at = remap_.size(), count = d.verts[(std::size_t)p.verts].pos.size() / 3;
-                remap_.resize(at + count, kNone);
+                const std::size_t at = remap_.size(), vertices = d.verts[(std::size_t)p.verts].pos.size() / 3;
+                remap_.resize(at + vertices, kNone);
                 for (const std::uint32_t i : p.idx)
                     remap_[at + i] = kUsed;
-                for (std::uint32_t i = 0; i < (std::uint32_t)count; ++i)
+                for (std::uint32_t i = 0; i < (std::uint32_t)vertices; ++i)
                     if (remap_[at + i] == kUsed)
                     {
                         remap_[at + i] = (std::uint32_t)usedVtx_.size() - usedFirst_.back();

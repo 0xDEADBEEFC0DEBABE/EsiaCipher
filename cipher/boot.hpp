@@ -11,7 +11,9 @@
 // the APIs that compile no effects) the CPU works the same chrome out into a small texture, stretched smooth.
 #pragma once
 #include "cipher.hpp"
+#include "handwriting.hpp"
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cipher
@@ -38,11 +40,17 @@ namespace cipher
         float Reveal() const { return reveal_; }
         void Skip() { done_ = true; }        // gone at once (captures)
         void Begin() { begin_ = true; }      // as a click does
+        // the name written in glass (Handwriting): the intro's own strokes until SetTitle writes other words there in the
+        // cursive alphabet; its spec (quality: Auto steps down while frames run slow)
+        Handwriting& Title() { return title_; }
+        void SetTitle(std::string_view text);
 
     private:
         void DrawCpuField(Ui& ui, esia::DrawList& dl, Vec2 size, float t, float presence, float opacity);
 
         bool gpu_ = true, done_ = false, begin_ = false;
+        Handwriting title_;
+        bool titleSet_ = false;
         double start_ = -1.0, revealStart_ = -1.0;
         float reveal_ = 0.0f;
         int warmed_ = 0;

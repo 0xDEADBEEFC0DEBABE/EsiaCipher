@@ -223,41 +223,15 @@ float4 WgtEffect(WgtFx fx)
 #include "boot_script.inc"
         constexpr int kScriptStrokes = (int)(sizeof(kScriptStrokeStart) / sizeof(kScriptStrokeStart[0])) - 1;
 
-        // the strokes' lengths and where each starts along the whole, the bounds: measured once
-        struct ScriptMetrics
-        {
-            float length[kScriptStrokes] = {}, start[kScriptStrokes] = {};
-            float total = 0.0f;
-            Rect bounds;
-        };
-        const ScriptMetrics& Script()
-        {
-            static const ScriptMetrics m = [] {
-                ScriptMetrics s;
-                s.bounds = Rect(Vec2(1e9f, 1e9f), Vec2(-1e9f, -1e9f));
-                for (int k = 0; k < kScriptStrokes; ++k)
-                {
-                    s.start[k] = s.total;
-                    for (int i = kScriptStrokeStart[k]; i < kScriptStrokeStart[k + 1]; ++i)
-                    {
-                        const Vec2 q = kScriptPoints[i];
-                        s.bounds.min = Vec2(std::min(s.bounds.min.x, q.x), std::min(s.bounds.min.y, q.y));
-                        s.bounds.max = Vec2(std::max(s.bounds.max.x, q.x), std::max(s.bounds.max.y, q.y));
-                        if (i > kScriptStrokeStart[k])
-                            s.length[k] += Length(q - kScriptPoints[i - 1]);
-                    }
-                    // a dot: as much of the pen's way as a third of a second of writing - the pen stops to dot it
-                    if (kScriptStrokeStart[k + 1] - kScriptStrokeStart[k] <= 2)
-                        s.length[k] = 3.0f;
-                    s.total += s.length[k];
-                }
-                return s;
-            }();
-            return m;
-        }
     }
 
     const char* BootScreen::EffectSource() { return kSource; }
+
+    void BootScreen::SetTitle(std::string_view text)
+    {
+        title_.SetText(text);
+        titleSet_ = true;
+    }
 
     // Without run-time effects: the same chrome worked out on the CPU into a texture of about 200 x 125 texels, the
     // pointer's waves sampled from their grid, stretched over the display - bilinear filtering keeps it smooth.
@@ -546,85 +520,16 @@ float4 WgtEffect(WgtFx fx)
         else
             DrawCpuField(ui, dl, d, t, presence, intensity * (1.0f - reveal_));
 
-        // ---- the words: the name written in glass; after the click it is unwritten (the pen running back along it) as
-        // the chrome sinks
-        const float over = Clamp01(1.0f - since * 1.8f);
-        if (over <= 0.002f)
-            return true;
-        p.SetAlpha(over);
-        const float cy = d.y * 0.46f;
-        // a soft shade behind them: the glass still has light to bend, the strokes read over the brightest chrome
-        p.Rect(Rect(Vec2(0, 0), d), Style().Fill(Paint::Radial(Color(0.0f, 0.0f, 0.0f, 0.42f * intensity), Color(0.0f, 0.0f, 0.0f, 0.0f), Vec2(0.5f, cy / d.y), 0.32f)));
-        const ScriptMetrics& sm = Script();
-        const float unit = std::min(84.0f, d.x * 0.62f / sm.bounds.Width());   // the x-height
-        const float thick = unit * 0.19f;                                        // the tube
-        const Vec2 size = sm.bounds.Size() * unit;
-        const float left = std::round(d.x * 0.5f - size.x * 0.5f), top = std::round(cy - size.y * 0.5f);
-        const auto toScreen = [&](Vec2 q) { return Vec2(left + (q.x - sm.bounds.min.x) * unit, top + (sm.bounds.max.y - q.y) * unit); };
-        // how far the pen has come: from the start, the whole name in 4.6 s at a hand's pace - near even, easing in and
-        // out a little; unwritten in 0.6 s
-        const float u = Clamp01((t - 0.15f) / 4.6f);
-        const float writeIn = Mix(u, EaseInOutCubic(u), 0.35f);
-        const float unwrite = begin_ ? EaseInOutCubic(Clamp01(since / 0.6f)) : 0.0f;
-        const float pen = sm.total * writeIn * (1.0f - unwrite);
-        GlassMaterial g;
-        g.blur = 0.5f;
-        g.refraction = 16.0f;
-        g.bezel = thick * 0.5f;   // a round tube: the whole width one dome
-        g.dispersion = 0.9f;
-        g.specular = 1.0f;
-        g.saturation = 1.4f;
-        g.brightness = 0.10f;
-        g.noise = 0.0f;
-        g.tint = Color(1.0f, 1.0f, 1.0f, 0.16f);
-        g.rim = Color::White(0.85f);
-        g.lightAngle = -2.2f + 0.6f * std::sin(t * 0.6f);   // its light turns slowly: the highlight runs along the tube
-        const Style tube = Style().Glass(g).Shadow(Color::Black(0.35f * intensity), 16.0f, Vec2(0.0f, 8.0f));
-        static thread_local std::vector<Vec2> pts;
-        Vec2 tip;
-        bool writing = false;
-        for (int k = 0; k < kScriptStrokes; ++k)
+        // ---- the words: the name written in glass as a pen writes it (Handwriting); after the click it is unwritten -
+        // the pen running back along it - as the chrome sinks
+        if (!titleSet_)
         {
-            const float done = pen - sm.start[k];
-            if (done <= 0.0f)
-                break;
-            const int a = kScriptStrokeStart[k], z = kScriptStrokeStart[k + 1];
-            if (z - a <= 2)
-            {
-                // a dot: the pen taps it on - it drops onto its place from a little above, growing, settling with a
-                // small bounce; the pen's glint on it while it does
-                const float k01 = Clamp01(done / sm.length[k]);
-                const Vec2 at = toScreen(kScriptPoints[a]) - Vec2(0.0f, thick * 0.9f * (1.0f - EaseOutCubic(k01)));
-                p.Circle(at, thick * 0.55f * std::max(EaseOutBack(k01), 0.0f), tube);
-                if (k01 < 1.0f)
-                {
-                    tip = at;
-                    writing = true;
-                }
-                continue;
-            }
-            pts.clear();
-            pts.push_back(toScreen(kScriptPoints[a]));
-            float run = 0.0f;
-            for (int i = a + 1; i < z; ++i)
-            {
-                const float seg = Length(kScriptPoints[i] - kScriptPoints[i - 1]);
-                if (run + seg >= done)
-                {
-                    pts.push_back(toScreen(Mix(kScriptPoints[i - 1], kScriptPoints[i], seg > 0.0f ? (done - run) / seg : 1.0f)));
-                    tip = pts.back();
-                    writing = true;
-                    break;
-                }
-                run += seg;
-                pts.push_back(toScreen(kScriptPoints[i]));
-            }
-            if (pts.size() >= 2)
-                p.Polyline(pts.data(), (int)pts.size(), thick, tube);
+            title_.SetScript(ScriptFromPoints(kScriptPoints, kScriptStrokeStart, kScriptStrokes));
+            titleSet_ = true;
         }
-        // the pen's tip: a glint where the glass is being laid down
-        if (writing && writeIn < 0.999f && !begin_)
-            p.Circle(tip, thick * 0.32f, Style().Fill(Color::White(0.9f)).Glow(Color::White(), 14.0f, 0.8f));
+        if (begin_)
+            title_.Unwrite(now);
+        title_.Draw(p, Rect(Vec2(0, 0), d), now);
         return true;
     }
 }
