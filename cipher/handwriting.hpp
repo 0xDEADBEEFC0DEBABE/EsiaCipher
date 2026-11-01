@@ -33,7 +33,8 @@ namespace cipher
         std::vector<int> strokeStart;   // one more than the strokes: the last is the end
     };
     // `text` (UTF-8) in the cursive alphabet (tools/script_bspline.py: a-z, A-Z, 0-9 and . , ! ? ' - : &): the letters of a
-    // word joined as one stroke, its dots and crosses after it; a character without a glyph leaves a gap
+    // word joined as one stroke, its dots and crosses after it; a character without a glyph leaves a gap; lines ('\n')
+    // centered on each other
     Script WriteScript(std::string_view text);
     Script ScriptFromPoints(const Vec2* points, const int* strokeStart, int strokes);
 
@@ -41,6 +42,9 @@ namespace cipher
     // What a device affords: Lines where the FX shader takes every point of a path in every pixel (Direct3D 9's shader
     // model 3) or there is no GPU (a software adapter: WARP, Microsoft Basic Render Driver, llvmpipe), else Glass
     HandwritingQuality SuggestQuality(std::string_view api, std::string_view adapter);
+    // The tube's glass by default (HandwritingSpec::glass): clear, a hint of frost, a strong lens with a rainbow at its
+    // rim. Its bezel and light angle are the writing's own: the tube one dome, its light turning slowly.
+    esia::GlassMaterial HandwritingGlass();
 
     struct HandwritingSpec
     {
@@ -58,6 +62,7 @@ namespace cipher
         HandwritingQuality quality = HandwritingQuality::Auto;
         HandwritingQuality start = HandwritingQuality::Glass;   // Auto's first (SuggestQuality)
         float slowFrame = 1.0f / 24.0f;   // Auto steps down while frames take longer than this (seconds)
+        esia::GlassMaterial glass = HandwritingGlass();   // Glass: the tube's (its bezel and light angle aside)
         Color ink = Color(0.88f, 0.92f, 0.98f);   // Solid and Lines: the tube's color
         Color shadow = Color::Black(0.35f);
         float shadowBlur = 16.0f;

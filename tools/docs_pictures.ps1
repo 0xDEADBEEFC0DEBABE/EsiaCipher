@@ -84,7 +84,7 @@ if (-not $Only.Count -or $Only -contains "datamosh")
 }
 
 # handwriting: the intro writing other words (--handwrite) in glass; then each quality writing its name, side by side
-Shot "handwriting" @("--handwrite", "Hello World", "--script", "1:move:1430,890") @(300, 380, 1560, 470) 330 -WithIntro
+Shot "handwriting" @("--handwrite", "Hello World", "--script", "1:move:1430,890") @(180, 350, 1800, 540) 330 -WithIntro
 if (-not $Only.Count -or $Only -contains "handwriting_quality")
 {
     $sheet = New-Object System.Drawing.Bitmap 1446, 250

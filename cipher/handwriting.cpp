@@ -1,6 +1,7 @@
 // Cipher - handwriting (handwriting.hpp)
 #include "handwriting.hpp"
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 
@@ -276,11 +277,13 @@ namespace cipher
         // each smoothed a little and sampled along its B-spline, slanted (the slant leans each line about its own
         // baseline); a dot as it is
         std::vector<Vec2> sampled;
+        std::vector<float> lineOf;   // each stroke's baseline
         for (Polygon& st : strokes)
         {
             if (st.p.empty())
                 continue;
             s.strokeStart.push_back((int)s.points.size());
+            lineOf.push_back(st.line);
             sampled.clear();
             if (st.p.size() <= 2)
                 sampled = st.p;
@@ -293,6 +296,23 @@ namespace cipher
                 s.points.push_back(Vec2(q.x + kHandSlant * (q.y - st.line), q.y));
         }
         s.strokeStart.push_back((int)s.points.size());
+        // more than one line: each centered on the others (moved so that its middle is at 0)
+        if (!lineOf.empty() && lineOf.back() != lineOf.front())
+            for (std::size_t k = 0; k < lineOf.size();)
+            {
+                const float line = lineOf[k];
+                float lo = FLT_MAX, hi = -FLT_MAX;
+                for (std::size_t j = k; j < lineOf.size() && lineOf[j] == line; ++j)
+                    for (int i = s.strokeStart[j]; i < s.strokeStart[j + 1]; ++i)
+                    {
+                        lo = std::min(lo, s.points[(std::size_t)i].x);
+                        hi = std::max(hi, s.points[(std::size_t)i].x);
+                    }
+                const float shift = -0.5f * (lo + hi);
+                for (; k < lineOf.size() && lineOf[k] == line; ++k)
+                    for (int i = s.strokeStart[k]; i < s.strokeStart[k + 1]; ++i)
+                        s.points[(std::size_t)i].x += shift;
+            }
         return s;
     }
 
@@ -316,6 +336,21 @@ namespace cipher
             if (has(adapter, soft))
                 return HandwritingQuality::Lines;
         return HandwritingQuality::Glass;
+    }
+
+    GlassMaterial HandwritingGlass()
+    {
+        GlassMaterial g;
+        g.blur = 0.5f;
+        g.refraction = 16.0f;
+        g.dispersion = 0.9f;
+        g.specular = 1.0f;
+        g.saturation = 1.4f;
+        g.brightness = 0.10f;
+        g.noise = 0.0f;
+        g.tint = Color(1.0f, 1.0f, 1.0f, 0.16f);
+        g.rim = Color::White(0.85f);
+        return g;
     }
 
     void Handwriting::SetText(std::string_view text) { SetScript(WriteScript(text)); }
@@ -505,17 +540,8 @@ namespace cipher
         Style tube;
         if (glass)
         {
-            GlassMaterial g;
-            g.blur = 0.5f;
-            g.refraction = 16.0f;
+            GlassMaterial g = spec_.glass;
             g.bezel = thick * 0.5f;   // a round tube: the whole width one dome
-            g.dispersion = 0.9f;
-            g.specular = 1.0f;
-            g.saturation = 1.4f;
-            g.brightness = 0.10f;
-            g.noise = 0.0f;
-            g.tint = Color(1.0f, 1.0f, 1.0f, 0.16f);
-            g.rim = Color::White(0.85f);
             g.lightAngle = -2.2f + 0.6f * std::sin(t * 0.6f);   // its light turns slowly: the highlight runs along the tube
             tube = Style().Glass(g).Shadow(shadow, spec_.shadowBlur, spec_.shadowOffset);
         }

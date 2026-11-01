@@ -875,9 +875,14 @@ def _H(v, kind):
 
 @cap('I')
 def _I(v, kind):
-    v.start((0.12, 1.52))
-    v.add((0.26, 1.70), (0.46, 1.76), (0.60, 1.66), (0.625, 1.32), (0.62, 0.88), (0.615, 0.44), (0.625, 0.16), (0.67, 0.04), (0.78, -0.01))
-    v.exit(LOW, 1.28)
+    # a bar on top, the stem from its middle down to a foot: a bar along the baseline (left to a tip, back) that runs on
+    # out. A stem with only a hook on top read as an l (UI as Ul)
+    v.first.append(stroke((0.30, 1.69), (0.45, 1.735), (0.62, 1.75), (0.79, 1.74), (0.94, 1.71)))
+    v.start((0.625, 1.7486))
+    v.add((0.625, 1.30), (0.62, 0.86), (0.615, 0.43), (0.615, 0.0)).tip()
+    v.add((0.50, 0.0), (0.40, 0.0), (0.30, 0.0)).tip().back(2)
+    v.add((0.615, 0.0), (0.76, 0.0))
+    v.exit(LOW, 1.24)
 
 
 @cap('J')
@@ -1173,12 +1178,13 @@ def _amp(v, kind):
 
 
 # ============================================================== words
-def layout(text):
+def layout(text, lines=None):
     """the strokes of `text` in writing order: control polygons (points, copy sources), x-height units; handwriting.cpp's
-    WriteScript does the same"""
+    WriteScript does the same. `lines` (a list) gets each stroke's baseline"""
     strokes = []
     x, y = 0.0, 0.0
     for line in text.split('\n'):
+        first = len(strokes)
         for word in line.split(' '):
             cur, src, exit_, marks, after, last = None, None, NONE, [], [], None
 
@@ -1233,6 +1239,8 @@ def layout(text):
             end()
             strokes.extend(marks)
             x += SPACE
+        if lines is not None:
+            lines.extend([y] * (len(strokes) - first))
         x = 0.0
         y -= 3.2
     return strokes
@@ -1276,13 +1284,25 @@ def bspline(P, step=STEP):
     return out
 
 
-def curves(text, step=STEP):
-    res = []
-    for P, src in layout(text):
+def curves(text, step=STEP, shifts=None):
+    """the strokes of `text` sampled; more than one line: each centered on the others, as WriteScript does (`shifts`, a
+    list, gets how far each stroke moved)"""
+    res, lines = [], []
+    for P, src in layout(text, lines):
         if len(P) <= 2:
             res.append(P)
             continue
         res.append([(px + SLANT * py, py) for px, py in bspline(smooth(P, src), step)])
+    dx = [0.0] * len(res)
+    if len(set(lines)) > 1:
+        span = {}
+        for c, b in zip(res, lines):
+            lo, hi = span.get(b, (1e30, -1e30))
+            span[b] = (min(lo, min(p[0] for p in c)), max(hi, max(p[0] for p in c)))
+        dx = [-0.5 * (span[b][0] + span[b][1]) for b in lines]
+        res = [[(x + d, y) for x, y in c] for c, d in zip(res, dx)]
+    if shifts is not None:
+        shifts.extend(dx)
     return res
 
 
@@ -1290,11 +1310,12 @@ def render(lines, pen=0.18, scale=90.0, pad=40, polygons=False, bg=(128, 128, 12
     from PIL import Image, ImageDraw
     strokes, polys = [], []
     for k, text in enumerate(lines):
-        for c in curves(text):
+        dx = []
+        for c in curves(text, shifts=dx):
             strokes.append([(x, y - 3.2 * k) for x, y in c])
         if polygons:
-            for P, src in layout(text):
-                polys.append([(x, y - 3.2 * k) for x, y in P])
+            for (P, src), d in zip(layout(text), dx):
+                polys.append([(x + d, y - 3.2 * k) for x, y in P])
     xs = [p[0] for s in strokes for p in s]
     ys = [p[1] for s in strokes for p in s]
     minx, maxx, miny, maxy = min(xs) - pen, max(xs) + pen, min(ys) - pen, max(ys) + pen

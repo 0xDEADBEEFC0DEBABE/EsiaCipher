@@ -1,9 +1,9 @@
 // Cipher - the intro: a dark pool with ribbons of liquid chrome swirling through it - a field of stripes bent by
 // itself, its bevelled edges mirroring a studio's lights - rising out of the flat as it starts, the pointer's path
-// pressing a trail of waves into it (a click a deep dent); the name written in glass as a pen writes it - a monoline cursive laid down along
-// its strokes, one stroke a word, a tube of liquid glass bending the chrome behind it (Apple's "hello"). It waits: a
-// click (or Enter, Space) unwrites the name, the ribbons sink back into the flat as the pool fades, and the app shows
-// through.
+// pressing a trail of waves into it (a click a deep dent); the name written as a pen writes it (Handwriting) - a
+// monoline cursive laid down along its strokes, one stroke a word, a tube of pearl white liquid glass bending the chrome
+// behind it. It waits: a click (or Enter, Space) unwrites the name, the ribbons sink back into the flat as the pool
+// fades, and the app shows through.
 //
 // The chrome is a user effect (Renderer::SetEffectSource with EffectSource(), id kEffect): Direct3D 10, 11 and 12
 // compile it at run time - once: the D3D shader cache keeps it (the first run after the source changes waits for the
@@ -40,16 +40,17 @@ namespace cipher
         float Reveal() const { return reveal_; }
         void Skip() { done_ = true; }        // gone at once (captures)
         void Begin() { begin_ = true; }      // as a click does
-        // the name written in glass (Handwriting): the intro's own strokes until SetTitle writes other words there in the
-        // cursive alphabet; its spec (quality: Auto steps down while frames run slow)
+        // the name written in glass (Handwriting): "Esia Cipher" over "UI Showcase" until SetTitle writes other words
+        // there; its spec (quality: Auto steps down while frames run slow)
         Handwriting& Title() { return title_; }
         void SetTitle(std::string_view text);
 
     private:
         void DrawCpuField(Ui& ui, esia::DrawList& dl, Vec2 size, float t, float presence, float opacity);
+        static HandwritingSpec TitleSpec();
 
         bool gpu_ = true, done_ = false, begin_ = false;
-        Handwriting title_;
+        Handwriting title_ = Handwriting(TitleSpec());
         bool titleSet_ = false;
         double start_ = -1.0, revealStart_ = -1.0;
         float reveal_ = 0.0f;

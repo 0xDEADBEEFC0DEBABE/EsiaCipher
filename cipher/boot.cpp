@@ -311,15 +311,28 @@ float4 WgtEffect(WgtFx fx)
         }
     }
 
-    namespace
-    {
-        // the name's cursive (generated: its strokes in writing order, x-height units, y up)
-#include "boot_script.inc"
-        constexpr int kScriptStrokes = (int)(sizeof(kScriptStrokeStart) / sizeof(kScriptStrokeStart[0])) - 1;
-
-    }
-
     const char* BootScreen::EffectSource() { return kSource; }
+
+    // the name: two lines of pearl white glass - whiter than the writing's own, its light brighter, a little more lens and
+    // rainbow at the rim (Solid and Lines: pearl white too) - up to 70 % of the display's width, the tube a little
+    // thicker, the pen given a little longer
+    HandwritingSpec BootScreen::TitleSpec()
+    {
+        HandwritingSpec s;
+        s.ink = Color(0.94f, 0.92f, 0.90f);
+        s.writeSeconds = 5.2f;
+        s.maxXHeight = 96.0f;
+        s.widthFraction = 0.70f;
+        s.tube = 0.22f;
+        s.glass.blur = 1.0f;
+        s.glass.refraction = 18.0f;
+        s.glass.dispersion = 1.0f;
+        s.glass.saturation = 1.2f;
+        s.glass.brightness = 0.24f;
+        s.glass.tint = Color(0.99f, 0.97f, 0.96f, 0.42f);
+        s.glass.rim = Color::White(0.95f);
+        return s;
+    }
 
     void BootScreen::SetTitle(std::string_view text)
     {
@@ -618,7 +631,7 @@ float4 WgtEffect(WgtFx fx)
         // the pen running back along it - as the chrome sinks
         if (!titleSet_)
         {
-            title_.SetScript(ScriptFromPoints(kScriptPoints, kScriptStrokeStart, kScriptStrokes));
+            title_.SetText("Esia Cipher\nUI Showcase");
             titleSet_ = true;
         }
         if (begin_)
